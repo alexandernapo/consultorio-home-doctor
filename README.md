@@ -86,7 +86,7 @@ ediciones, pacientes que agregaste a mano).
 
 ---
 
-## Nota sobre seguridad
+## Nota sobre seguridad.
 
 Esta app tiene un inicio de sesión (correo y contraseña) porque maneja información
 médica de personas reales. No compartas el correo/contraseña ni el link de forma
