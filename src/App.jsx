@@ -35,6 +35,50 @@ const initialAppointments = []; // Los datos viven en Supabase (ver supabase/see
 
 const initialBilling = []; // Los datos viven en Supabase (ver supabase/seed.sql)
 
+const MEDICATION_CATALOG = [
+  { name: "Amoxicilina", concentration: "500mg", form: "Sólido oral" },
+  { name: "Amoxicilina + Ácido Clavulánico", concentration: "875/125mg", form: "Sólido oral" },
+  { name: "Azitromicina", concentration: "500mg", form: "Sólido oral" },
+  { name: "Penicilina Benzatínica", concentration: "1'200.000 UI", form: "Inyectable IM" },
+  { name: "Cefuroxima", concentration: "500mg", form: "Sólido oral" },
+  { name: "Ciprofloxacino", concentration: "500mg", form: "Sólido oral" },
+  { name: "Dicloxacilina", concentration: "500mg", form: "Sólido oral" },
+  { name: "Nitrofurantoína", concentration: "100mg", form: "Sólido oral" },
+  { name: "Trimetoprim + Sulfametoxazol", concentration: "800/160mg", form: "Sólido oral" },
+  { name: "Metronidazol", concentration: "500mg", form: "Sólido oral" },
+  { name: "Fluconazol", concentration: "150mg", form: "Sólido oral" },
+  { name: "Paracetamol", concentration: "500mg", form: "Sólido oral" },
+  { name: "Ibuprofeno", concentration: "400mg", form: "Sólido oral" },
+  { name: "Diclofenaco", concentration: "50mg", form: "Sólido oral" },
+  { name: "Diclofenaco", concentration: "75mg", form: "Inyectable IM" },
+  { name: "Ketorolaco", concentration: "10mg", form: "Sólido oral" },
+  { name: "Metamizol (Novalgina)", concentration: "500mg", form: "Sólido oral" },
+  { name: "Dexametasona", concentration: "4mg", form: "Inyectable IM" },
+  { name: "Prednisona", concentration: "50mg", form: "Sólido oral" },
+  { name: "Betametasona", concentration: "1mg", form: "Sólido oral" },
+  { name: "Loratadina", concentration: "10mg", form: "Sólido oral" },
+  { name: "Cetirizina", concentration: "10mg", form: "Sólido oral" },
+  { name: "Omeprazol", concentration: "20mg", form: "Sólido oral" },
+  { name: "Esomeprazol", concentration: "40mg", form: "Sólido oral" },
+  { name: "Metoclopramida", concentration: "10mg", form: "Sólido oral" },
+  { name: "Ondansetrón", concentration: "4mg", form: "Sólido oral" },
+  { name: "Ambroxol", concentration: "30mg/5ml", form: "Jarabe" },
+  { name: "Salbutamol", concentration: "100mcg", form: "Inhalador" },
+  { name: "Complejo B", concentration: "—", form: "Inyectable IM" },
+  { name: "Ácido Fólico", concentration: "5mg", form: "Sólido oral" },
+  { name: "Sulfato Ferroso", concentration: "300mg", form: "Sólido oral" },
+  { name: "Losartán", concentration: "50mg", form: "Sólido oral" },
+  { name: "Amlodipino", concentration: "5mg", form: "Sólido oral" },
+  { name: "Metformina", concentration: "850mg", form: "Sólido oral" },
+  { name: "Levotiroxina", concentration: "50mcg", form: "Sólido oral" },
+  { name: "Atorvastatina", concentration: "20mg", form: "Sólido oral" },
+  { name: "Sertralina", concentration: "50mg", form: "Sólido oral" },
+  { name: "Betahistina", concentration: "16mg", form: "Sólido oral" },
+  { name: "Levetiracetam", concentration: "1000mg", form: "Sólido oral" },
+  { name: "Carbamazepina", concentration: "400mg", form: "Sólido oral" },
+  { name: "Clotrimazol", concentration: "1%", form: "Óvulo vaginal" },
+];
+
 const TABS = [
   { key: "home", label: "Inicio", icon: Home },
   { key: "patients", label: "Pacientes", icon: Users },
@@ -209,6 +253,8 @@ function ClinicAppInner({ onLogout }) {
   const allReady = doctorsReady && patientsReady && historyReady && apptReady && billingReady;
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [attentionFlow, setAttentionFlow] = useState(null); // null | "choose" | "new" | "pick"
+  const [autoOpenEntry, setAutoOpenEntry] = useState(false);
   const [notifStatus, setNotifStatus] = useState(() => {
     try {
       return typeof Notification !== "undefined" ? Notification.permission : "unsupported";
@@ -221,6 +267,14 @@ function ClinicAppInner({ onLogout }) {
   const fullName = (p) => p ? `${p.lastNamePaternal} ${p.lastNameMaternal} ${p.firstNames}`.replace(/\s+/g, " ").trim() : "—";
   const patientName = (id) => fullName((patients || []).find((p) => p.id === id));
   const doctorName = (id) => (doctors || []).find((d) => d.id === id)?.name || "—";
+
+  function createPatientQuick(data) {
+    const newId = uid("p");
+    const nextNum = String(patients.length + 1).padStart(4, "0");
+    const newPatient = { ...data, id: newId, historyNumber: data.historyNumber || `HC-${nextNum}`, createdAt: Date.now() };
+    setPatients((prev) => [...prev, newPatient]);
+    return newId;
+  }
 
   function importBatch(jsonText) {
     let parsed;
@@ -314,6 +368,7 @@ function ClinicAppInner({ onLogout }) {
                 pendingBilling: billing.filter((b) => b.status === "pendiente").length,
                 doctors: doctors.length,
               }}
+              onNewAttention={() => setAttentionFlow("choose")}
             />
           )}
           {tab === "patients" && (
@@ -321,15 +376,52 @@ function ClinicAppInner({ onLogout }) {
               patients={patients} setPatients={setPatients} fullName={fullName} history={history}
               onOpenHistory={(id) => { setSelectedPatientId(id); setTab("history"); }}
               onOpenImport={() => setShowImport(true)}
+              doctors={doctors} patientName={patientName}
+              appointments={appointments} setAppointments={setAppointments}
             />
           )}
           {showImport && <ImportModal onImport={importBatch} onClose={() => setShowImport(false)} />}
+          {attentionFlow === "choose" && (
+            <AttentionChooserModal
+              onPickNew={() => setAttentionFlow("new")}
+              onPickExisting={() => setAttentionFlow("pick")}
+              onClose={() => setAttentionFlow(null)}
+            />
+          )}
+          {attentionFlow === "new" && (
+            <PatientForm
+              patient={{}}
+              onCancel={() => setAttentionFlow(null)}
+              onSave={(data) => {
+                const newId = createPatientQuick(data);
+                setSelectedPatientId(newId);
+                setTab("history");
+                setAutoOpenEntry(true);
+                setAttentionFlow(null);
+              }}
+            />
+          )}
+          {attentionFlow === "pick" && (
+            <QuickPatientPicker
+              patients={patients}
+              fullName={fullName}
+              onClose={() => setAttentionFlow(null)}
+              onSelect={(id) => {
+                setSelectedPatientId(id);
+                setTab("history");
+                setAutoOpenEntry(true);
+                setAttentionFlow(null);
+              }}
+            />
+          )}
           {tab === "history" && (
             <HistoryView
               history={history} setHistory={setHistory}
               patients={patients} doctors={doctors}
               selectedPatientId={selectedPatientId} setSelectedPatientId={setSelectedPatientId}
               patientName={patientName} doctorName={doctorName}
+              appointments={appointments} setAppointments={setAppointments}
+              autoOpenEntry={autoOpenEntry} onAutoOpened={() => setAutoOpenEntry(false)}
             />
           )}
           {tab === "appointments" && (
@@ -443,7 +535,7 @@ const HOME_STATS_MAP = {
   doctors: { label: "Médicos" },
 };
 
-function HomeView({ setTab, stats }) {
+function HomeView({ setTab, stats, onNewAttention }) {
   return (
     <div style={styles.homeWrap}>
       <div style={styles.homeLogoBlock}>
@@ -477,6 +569,10 @@ function HomeView({ setTab, stats }) {
         <div style={styles.homeTagline}>Sistema de gestión de historiales clínicos</div>
       </div>
 
+      <button style={styles.newAttentionBtn} onClick={onNewAttention}>
+        <Plus size={22} /> Nueva atención
+      </button>
+
       <div style={styles.homeStatsRow}>
         {Object.entries(stats).map(([key, value]) => (
           <div key={key} style={styles.homeStatCard}>
@@ -497,6 +593,67 @@ function HomeView({ setTab, stats }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function AttentionChooserModal({ onPickNew, onPickExisting, onClose }) {
+  return (
+    <Modal title="Nueva atención" onClose={onClose}>
+      <p style={{ fontSize: 13.5, color: "#5C574C", marginTop: 0 }}>¿Es un paciente nuevo o ya tiene historia clínica?</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <button onClick={onPickNew} style={styles.attentionChoiceBtn}>
+          <Plus size={20} color={MAGENTA} />
+          <div>
+            <div style={{ fontWeight: 700 }}>Paciente nuevo</div>
+            <div style={{ fontSize: 12.5, color: "#8A8577" }}>Crear su ficha desde cero</div>
+          </div>
+          <ChevronRight size={18} color="#8A8577" style={{ marginLeft: "auto" }} />
+        </button>
+        <button onClick={onPickExisting} style={styles.attentionChoiceBtn}>
+          <Search size={20} color={TEAL} />
+          <div>
+            <div style={{ fontWeight: 700 }}>Ya tiene historia</div>
+            <div style={{ fontSize: 12.5, color: "#8A8577" }}>Buscarlo y agregar una nueva atención</div>
+          </div>
+          <ChevronRight size={18} color="#8A8577" style={{ marginLeft: "auto" }} />
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function QuickPatientPicker({ patients, fullName, onSelect, onClose }) {
+  const [query, setQuery] = useState("");
+  const matches = query.trim()
+    ? patients.filter((p) => fullName(p).toLowerCase().includes(query.trim().toLowerCase())).slice(0, 30)
+    : [];
+
+  return (
+    <Modal title="Buscar paciente" onClose={onClose}>
+      <div style={styles.searchRow}>
+        <Search size={16} color="#8A8577" />
+        <input
+          autoFocus
+          placeholder="Escribe un nombre…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          style={styles.searchInput}
+        />
+      </div>
+      <div style={{ ...styles.compactList, maxHeight: 360, overflowY: "auto", marginTop: 10 }}>
+        {matches.map((p) => (
+          <button key={p.id} onClick={() => onSelect(p.id)} style={styles.abcRow}>
+            <div style={styles.avatar}>{fullName(p).split(" ").map((s) => s[0]).slice(0, 2).join("")}</div>
+            <div style={{ flex: 1, textAlign: "left" }}>
+              <div style={styles.cardTitle}>{fullName(p)}</div>
+              <div style={styles.cardMeta}>{p.historyNumber}</div>
+            </div>
+            <ChevronRight size={16} color="#8A8577" />
+          </button>
+        ))}
+        {query.trim() && matches.length === 0 && <EmptyState text="No se encontraron pacientes." />}
+      </div>
+    </Modal>
   );
 }
 
@@ -571,10 +728,11 @@ function SubHeading({ children }) {
 }
 
 // ---------- Pacientes ----------
-function PatientsView({ patients, setPatients, onOpenHistory, fullName, history, onOpenImport }) {
+function PatientsView({ patients, setPatients, onOpenHistory, fullName, history, onOpenImport, doctors, patientName, appointments, setAppointments }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [newApptFor, setNewApptFor] = useState(null);
 
   const hasQuery = query.trim().length > 0;
   const visitCountFor = (id) => history.filter((h) => h.patientId === id).length;
@@ -658,6 +816,11 @@ function PatientsView({ patients, setPatients, onOpenHistory, fullName, history,
                     <Button variant="ghost" onClick={() => onOpenHistory(p.id)}>
                       Historial <ChevronRight size={14} />
                     </Button>
+                    {doctors && setAppointments && (
+                      <Button variant="ghost" onClick={() => setNewApptFor(p.id)}>
+                        <CalendarDays size={14} /> Nueva cita
+                      </Button>
+                    )}
                     {p.sourceUrl && (
                       <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" style={styles.iconBtn} title="Ver historia original escaneada">
                         <FileText size={15} />
@@ -679,6 +842,18 @@ function PatientsView({ patients, setPatients, onOpenHistory, fullName, history,
 
       {editing !== null && (
         <PatientForm patient={editing} onCancel={() => setEditing(null)} onSave={savePatient} />
+      )}
+      {newApptFor && doctors && (
+        <AppointmentForm
+          appt={{ patientId: newApptFor }}
+          patients={patients} doctors={doctors} patientName={patientName}
+          onCancel={() => setNewApptFor(null)}
+          onSave={(data) => {
+            if (data.id) setAppointments((prev) => prev.map((a) => (a.id === data.id ? data : a)));
+            else setAppointments((prev) => [...prev, { ...data, id: uid("a") }]);
+            setNewApptFor(null);
+          }}
+        />
       )}
     </div>
   );
@@ -814,15 +989,23 @@ function PatientForm({ patient, onCancel, onSave }) {
 }
 
 // ---------- Historial clínico ----------
-function HistoryView({ history, setHistory, patients, doctors, selectedPatientId, setSelectedPatientId, patientName, doctorName }) {
+function HistoryView({ history, setHistory, patients, doctors, selectedPatientId, setSelectedPatientId, patientName, doctorName, appointments, setAppointments, autoOpenEntry, onAutoOpened }) {
   const [editing, setEditing] = useState(null);
   const [showPrescription, setShowPrescription] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
+  const [showNewAppointment, setShowNewAppointment] = useState(false);
   const selectedPatient = patients.find((p) => p.id === selectedPatientId);
   const entries = useMemo(() => {
     const list = selectedPatientId ? history.filter((h) => h.patientId === selectedPatientId) : history;
     return [...list].sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [history, selectedPatientId]);
+
+  React.useEffect(() => {
+    if (autoOpenEntry && selectedPatientId) {
+      setEditing({ patientId: selectedPatientId });
+      onAutoOpened && onAutoOpened();
+    }
+  }, [autoOpenEntry, selectedPatientId]);
 
   function saveEntry(data) {
     if (data.id) setHistory((prev) => prev.map((h) => (h.id === data.id ? data : h)));
@@ -858,7 +1041,13 @@ function HistoryView({ history, setHistory, patients, doctors, selectedPatientId
             <Button variant="ghost" onClick={() => setSelectedPatientId(null)}>← Todos los pacientes</Button>
           </div>
 
-          {selectedPatient && <PatientSummaryCard patient={selectedPatient} patientName={patientName} />}
+          {selectedPatient && (
+            <PatientSummaryCard
+              patient={selectedPatient}
+              patientName={patientName}
+              onNewAppointment={() => setShowNewAppointment(true)}
+            />
+          )}
 
           <div style={styles.timeline}>
             {entries.map((h) => (
@@ -885,16 +1074,32 @@ function HistoryView({ history, setHistory, patients, doctors, selectedPatientId
         <HistoryForm entry={editing} patients={patients} doctors={doctors} patientName={patientName} onCancel={() => setEditing(null)} onSave={saveEntry} />
       )}
       {showPrescription && selectedPatient && (
-        <PrescriptionModal patient={selectedPatient} doctors={doctors} patientName={patientName} onClose={() => setShowPrescription(false)} />
+        <PrescriptionModal
+          patient={selectedPatient} doctors={doctors} patientName={patientName}
+          onClose={() => setShowPrescription(false)}
+          initialCie10={entries[0]?.cie10 || ""}
+        />
       )}
       {showCertificate && selectedPatient && (
         <CertificateModal patient={selectedPatient} doctors={doctors} patientName={patientName} onClose={() => setShowCertificate(false)} />
+      )}
+      {showNewAppointment && selectedPatient && (
+        <AppointmentForm
+          appt={{ patientId: selectedPatient.id }}
+          patients={patients} doctors={doctors} patientName={patientName}
+          onCancel={() => setShowNewAppointment(false)}
+          onSave={(data) => {
+            if (data.id) setAppointments((prev) => prev.map((a) => (a.id === data.id ? data : a)));
+            else setAppointments((prev) => [...prev, { ...data, id: uid("a") }]);
+            setShowNewAppointment(false);
+          }}
+        />
       )}
     </div>
   );
 }
 
-function PatientSummaryCard({ patient, patientName }) {
+function PatientSummaryCard({ patient, patientName, onNewAppointment }) {
   const antecedentes = [
     { label: "APP", value: patient.app },
     { label: "AQX", value: patient.aqx },
@@ -917,6 +1122,9 @@ function PatientSummaryCard({ patient, patientName }) {
             {calcAge(patient.birthDate)} · {patient.sex === "M" ? "Masculino" : patient.sex === "F" ? "Femenino" : "—"} · C.I. {patient.cedula || "—"} · {patient.historyNumber}
           </div>
         </div>
+        {onNewAppointment && (
+          <Button variant="ghost" onClick={onNewAppointment}><CalendarDays size={15} /> Nueva cita</Button>
+        )}
         {patient.sourceUrl && (
           <a href={patient.sourceUrl} target="_blank" rel="noopener noreferrer" style={styles.btnGhost}>
             <FileText size={15} /> Ver PDF original
@@ -979,7 +1187,7 @@ function VisitAccordionItem({ entry, doctorName, vitalsRow, onEdit, onDelete }) 
             <div style={styles.evolBlock}>
               <div style={styles.label}>Notas de evolución</div>
               <p style={styles.value}>{entry.reason}</p>
-              {entry.diagnosis && <p style={styles.value}><strong>Dx:</strong> {entry.diagnosis}</p>}
+              {entry.diagnosis && <p style={styles.value}><strong>Dx:</strong> {entry.diagnosis} {entry.cie10 && `(CIE-10: ${entry.cie10})`}</p>}
               {entry.notes && <p style={styles.value}>{entry.notes}</p>}
             </div>
 
@@ -1084,6 +1292,7 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
     bp: entry.bp || "", hr: entry.hr || "", rr: entry.rr || "", temp: entry.temp || "",
     weight: entry.weight || "", height: entry.height || "", spo2: entry.spo2 || "", bmi: entry.bmi || "",
     diagnosis: entry.diagnosis || "", treatment: entry.treatment || "", notes: entry.notes || "",
+    cie10: entry.cie10 || "",
   });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -1118,6 +1327,7 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
 
       <SubHeading>Evaluación</SubHeading>
       <div style={styles.formGrid}>
+        <Field label="CIE-10 (código de enfermedad)"><Input value={form.cie10} onChange={set("cie10")} placeholder="Ej. J02.9" /></Field>
         <Field label="Diagnóstico" full><TextArea value={form.diagnosis} onChange={set("diagnosis")} /></Field>
         <Field label="Tratamiento" full><TextArea value={form.treatment} onChange={set("treatment")} /></Field>
         <Field label="Notas adicionales" full><TextArea value={form.notes} onChange={set("notes")} /></Field>
@@ -1163,7 +1373,7 @@ function AppointmentsView({ appointments, setAppointments, patients, doctors, pa
             </div>
             <div style={{ flex: 1 }}>
               <div style={styles.cardTitle}>{patientName(a.patientId)}</div>
-              <div style={styles.cardMeta}>{doctorName(a.doctorId)}</div>
+              <div style={styles.cardMeta}>{doctorName(a.doctorId)}{a.reason ? ` · ${a.reason}` : ""}{a.cie10 ? ` · CIE-10: ${a.cie10}` : ""}</div>
             </div>
             <button onClick={() => toggleStatus(a)} style={{ border: "none", background: "none", cursor: "pointer" }}>
               <Badge tone={toneFor(a.status)}>{a.status}</Badge>
@@ -1186,9 +1396,10 @@ function AppointmentsView({ appointments, setAppointments, patients, doctors, pa
 
 function AppointmentForm({ appt, patients, doctors, patientName, onCancel, onSave }) {
   const [form, setForm] = useState({
-    id: appt.id, patientId: appt.patientId, doctorId: appt.doctorId,
+    id: appt.id, patientId: appt.patientId || patients[0]?.id, doctorId: appt.doctorId || doctors[0]?.id,
     date: appt.date || new Date().toISOString().slice(0, 10),
     time: appt.time || "09:00", status: appt.status || "pendiente",
+    reason: appt.reason || "", cie10: appt.cie10 || "",
   });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -1207,6 +1418,8 @@ function AppointmentForm({ appt, patients, doctors, patientName, onCancel, onSav
         </Field>
         <Field label="Fecha"><Input type="date" value={form.date} onChange={set("date")} /></Field>
         <Field label="Hora"><Input type="time" value={form.time} onChange={set("time")} /></Field>
+        <Field label="Motivo de consulta" full><Input placeholder="Ej. Control, dolor abdominal…" value={form.reason} onChange={set("reason")} /></Field>
+        <Field label="CIE-10 (si ya se conoce)"><Input placeholder="Ej. J02.9" value={form.cie10} onChange={set("cie10")} /></Field>
         <Field label="Estado">
           <Select value={form.status} onChange={set("status")}>
             <option value="pendiente">Pendiente</option>
@@ -1344,17 +1557,35 @@ function PrintLetterhead({ patient, doctor, patientName, dateStr }) {
   );
 }
 
-function PrescriptionModal({ patient, doctors, patientName, onClose }) {
+function PrescriptionModal({ patient, doctors, patientName, onClose, initialCie10 }) {
   const [doctorId, setDoctorId] = useState(doctors[0]?.id || "");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [meds, setMeds] = useState([{ id: uid("m"), name: "", dose: "", frequency: "", duration: "" }]);
-  const [indications, setIndications] = useState("");
+  const [recipeNo, setRecipeNo] = useState("");
+  const [cie10, setCie10] = useState(initialCie10 || "");
+  const [meds, setMeds] = useState([{
+    id: uid("m"), name: "", concentration: "", form: "Sólido oral", quantity: "",
+    route: "Oral", dose: "", frequency: "", duration: "", morning: false, noon: false, evening: false, night: false,
+  }]);
+  const [warnings, setWarnings] = useState("");
 
   const doctor = doctors.find((d) => d.id === doctorId);
 
-  const setMed = (id, key) => (e) => setMeds((prev) => prev.map((m) => (m.id === id ? { ...m, [key]: e.target.value } : m)));
-  const addMed = () => setMeds((prev) => [...prev, { id: uid("m"), name: "", dose: "", frequency: "", duration: "" }]);
+  const setMed = (id, key) => (e) => {
+    const val = e && e.target ? (e.target.type === "checkbox" ? e.target.checked : e.target.value) : e;
+    setMeds((prev) => prev.map((m) => (m.id === id ? { ...m, [key]: val } : m)));
+  };
+  const pickFromCatalog = (id) => (e) => {
+    const found = MEDICATION_CATALOG.find((c) => c.name === e.target.value);
+    setMeds((prev) => prev.map((m) => (m.id === id ? { ...m, name: e.target.value, concentration: found?.concentration || m.concentration, form: found?.form || m.form } : m)));
+  };
+  const addMed = () => setMeds((prev) => [...prev, {
+    id: uid("m"), name: "", concentration: "", form: "Sólido oral", quantity: "",
+    route: "Oral", dose: "", frequency: "", duration: "", morning: false, noon: false, evening: false, night: false,
+  }]);
   const removeMed = (id) => setMeds((prev) => prev.filter((m) => m.id !== id));
+
+  const activeMeds = meds.filter((m) => m.name.trim());
+  const age = calcAge(patient?.birthDate);
 
   return (
     <Modal title={`Receta médica — ${patientName(patient.id)}`} onClose={onClose} wide>
@@ -1367,42 +1598,160 @@ function PrescriptionModal({ patient, doctors, patientName, onClose }) {
               </Select>
             </Field>
             <Field label="Fecha"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+            <Field label="N° de receta"><Input placeholder="Ej. 1048" value={recipeNo} onChange={(e) => setRecipeNo(e.target.value)} /></Field>
+            <Field label="CIE-10"><Input placeholder="Ej. G40" value={cie10} onChange={(e) => setCie10(e.target.value)} /></Field>
           </div>
 
           <SubHeading>Medicamentos</SubHeading>
           {meds.map((m) => (
-            <div key={m.id} style={styles.medRow}>
-              <Input placeholder="Medicamento" value={m.name} onChange={setMed(m.id, "name")} style={{ flex: 2 }} />
-              <Input placeholder="Dosis" value={m.dose} onChange={setMed(m.id, "dose")} style={{ flex: 1 }} />
-              <Input placeholder="Frecuencia" value={m.frequency} onChange={setMed(m.id, "frequency")} style={{ flex: 1 }} />
-              <Input placeholder="Duración" value={m.duration} onChange={setMed(m.id, "duration")} style={{ flex: 1 }} />
-              <button style={styles.iconBtn} onClick={() => removeMed(m.id)}><Trash2 size={15} /></button>
+            <div key={m.id} style={styles.medCard}>
+              <div style={styles.medCardRow}>
+                <Field label="Medicamento" style={{ flex: 2, minWidth: 220 }}>
+                  <input
+                    list="med-catalog"
+                    placeholder="Escribe o elige de la lista…"
+                    value={m.name}
+                    onChange={pickFromCatalog(m.id)}
+                    style={{ ...styles.input, fontSize: 15, padding: "12px 14px" }}
+                  />
+                </Field>
+                <Field label="Concentración" style={{ flex: 1, minWidth: 130 }}>
+                  <Input placeholder="Ej. 500mg" value={m.concentration} onChange={setMed(m.id, "concentration")} style={{ fontSize: 15, padding: "12px 14px" }} />
+                </Field>
+                <Field label="Forma" style={{ flex: 1, minWidth: 150 }}>
+                  <Input placeholder="Sólido oral" value={m.form} onChange={setMed(m.id, "form")} style={{ fontSize: 15, padding: "12px 14px" }} />
+                </Field>
+                <Field label="Cantidad" style={{ flex: 1, minWidth: 110 }}>
+                  <Input placeholder="Ej. 20" value={m.quantity} onChange={setMed(m.id, "quantity")} style={{ fontSize: 15, padding: "12px 14px" }} />
+                </Field>
+                <button style={{ ...styles.iconBtn, alignSelf: "flex-end", marginBottom: 4 }} onClick={() => removeMed(m.id)}><Trash2 size={16} /></button>
+              </div>
+              <div style={styles.medCardRow}>
+                <Field label="Vía" style={{ flex: 1, minWidth: 110 }}>
+                  <Input placeholder="Oral" value={m.route} onChange={setMed(m.id, "route")} style={{ fontSize: 15, padding: "12px 14px" }} />
+                </Field>
+                <Field label="Dosis" style={{ flex: 1, minWidth: 110 }}>
+                  <Input placeholder="Ej. 1 tab" value={m.dose} onChange={setMed(m.id, "dose")} style={{ fontSize: 15, padding: "12px 14px" }} />
+                </Field>
+                <Field label="Frecuencia" style={{ flex: 1, minWidth: 110 }}>
+                  <Input placeholder="Ej. c/12h" value={m.frequency} onChange={setMed(m.id, "frequency")} style={{ fontSize: 15, padding: "12px 14px" }} />
+                </Field>
+                <Field label="Duración" style={{ flex: 1, minWidth: 110 }}>
+                  <Input placeholder="Ej. 7 días" value={m.duration} onChange={setMed(m.id, "duration")} style={{ fontSize: 15, padding: "12px 14px" }} />
+                </Field>
+              </div>
+              <div style={styles.medCardCheckRow}>
+                <label style={styles.medCheckLabel}><input type="checkbox" checked={m.morning} onChange={setMed(m.id, "morning")} /> Mañana</label>
+                <label style={styles.medCheckLabel}><input type="checkbox" checked={m.noon} onChange={setMed(m.id, "noon")} /> Medio día</label>
+                <label style={styles.medCheckLabel}><input type="checkbox" checked={m.evening} onChange={setMed(m.id, "evening")} /> Tarde</label>
+                <label style={styles.medCheckLabel}><input type="checkbox" checked={m.night} onChange={setMed(m.id, "night")} /> Noche</label>
+              </div>
             </div>
           ))}
           <Button variant="ghost" onClick={addMed} style={{ marginTop: 6 }}><Plus size={15} /> Agregar medicamento</Button>
+          <datalist id="med-catalog">
+            {MEDICATION_CATALOG.map((c) => <option key={c.name + c.concentration} value={c.name} />)}
+          </datalist>
 
-          <SubHeading>Indicaciones generales</SubHeading>
-          <TextArea value={indications} onChange={(e) => setIndications(e.target.value)} placeholder="Reposo, hidratación, signos de alarma…" />
+          <SubHeading>Advertencias / indicaciones generales</SubHeading>
+          <TextArea value={warnings} onChange={(e) => setWarnings(e.target.value)} placeholder="Ej. Convulsiones, reposo, hidratación, signos de alarma…" />
         </div>
 
         <div id="print-area" style={styles.docPreview}>
-          <PrintLetterhead patient={patient} doctor={doctor} patientName={patientName(patient.id)} dateStr={date} />
-          <div style={styles.printRx}>Rp/</div>
-          {meds.filter((m) => m.name).map((m) => (
-            <div key={m.id} style={styles.printMedLine}>
-              <strong>{m.name}</strong> — {m.dose} {m.frequency && `· ${m.frequency}`} {m.duration && `· ${m.duration}`}
+          {/* HOJA 1: RECETA */}
+          <div style={styles.rxSheet}>
+            <PrintLetterheadRx doctor={doctor} recipeNo={recipeNo} dateStr={date} />
+            <div style={styles.rxPatientRow}>
+              <div style={styles.rxPatientCell}><span style={styles.printLabel}>NOMBRE Y APELLIDOS:</span> {patientName(patient.id)}</div>
+              <div style={styles.rxPatientCell}><span style={styles.printLabel}>CIE 10:</span> {cie10 || "—"}</div>
+              <div style={styles.rxPatientCell}><span style={styles.printLabel}>SEXO:</span> {patient?.sex === "M" ? "M ☒ F ☐" : patient?.sex === "F" ? "M ☐ F ☒" : "M ☐ F ☐"}</div>
+              <div style={styles.rxPatientCell}><span style={styles.printLabel}>DOCUMENTO IDENTIDAD:</span> {patient?.cedula || "—"}</div>
+              <div style={styles.rxPatientCell}><span style={styles.printLabel}>EDAD:</span> {age}</div>
             </div>
-          ))}
-          {meds.every((m) => !m.name) && <div style={styles.printPlaceholder}>Agrega medicamentos para verlos aquí.</div>}
-          {indications && (
-            <div style={styles.printIndications}>
-              <span style={styles.printLabel}>Indicaciones:</span> {indications}
+            <table style={styles.rxTable}>
+              <thead>
+                <tr>
+                  <th style={styles.rxTh}>DATOS DEL MEDICAMENTO (DCI, concentración y forma farmacéutica)</th>
+                  <th style={{ ...styles.rxTh, width: 140 }}>CANTIDAD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeMeds.map((m) => (
+                  <tr key={m.id}>
+                    <td style={styles.rxTd}>{m.name} {m.concentration} — {m.form}</td>
+                    <td style={styles.rxTd}>{m.quantity}</td>
+                  </tr>
+                ))}
+                {Array.from({ length: Math.max(0, 6 - activeMeds.length) }).map((_, i) => (
+                  <tr key={"empty" + i}><td style={styles.rxTd}>&nbsp;</td><td style={styles.rxTd}>&nbsp;</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={styles.rxPrescriberBox}>
+              <div style={{ flex: 1 }}>
+                <span style={styles.printLabel}>DATOS DEL PRESCRIPTOR</span>
+                <div style={{ marginTop: 6 }}>{doctor?.name}</div>
+                <div style={{ fontSize: 11, color: "#666" }}>{doctor?.specialty}</div>
+              </div>
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <span style={styles.printLabel}>Firma y sello del prescriptor</span>
+                <div style={styles.rxSignBox} />
+              </div>
             </div>
-          )}
-          <div style={styles.printSignature}>
-            <div style={styles.printSignLine} />
-            <div style={styles.printSignName}>{doctor?.name}</div>
-            <div style={styles.printClinicTag}>{doctor?.specialty}</div>
+          </div>
+
+          {/* HOJA 2: INDICACIONES */}
+          <div style={{ ...styles.rxSheet, pageBreakBefore: "always" }}>
+            <PrintLetterheadRx doctor={doctor} recipeNo={recipeNo} dateStr={date} label="INDICACIONES" />
+            <div style={styles.rxPatientRow}>
+              <div style={{ ...styles.rxPatientCell, flex: 2 }}><span style={styles.printLabel}>NOMBRE DEL PACIENTE:</span> {patientName(patient.id)}</div>
+            </div>
+            <table style={styles.rxTable}>
+              <thead>
+                <tr>
+                  <th style={styles.rxTh}>MEDICAMENTO</th>
+                  <th style={styles.rxTh}>VÍA ADMIN</th>
+                  <th style={styles.rxTh}>DOSIS</th>
+                  <th style={styles.rxTh}>FRECUENCIA</th>
+                  <th style={styles.rxTh}>DURACIÓN</th>
+                  <th style={styles.rxThSmall}>MAÑANA</th>
+                  <th style={styles.rxThSmall}>MEDIO DÍA</th>
+                  <th style={styles.rxThSmall}>TARDE</th>
+                  <th style={styles.rxThSmall}>NOCHE</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeMeds.map((m) => (
+                  <tr key={m.id}>
+                    <td style={styles.rxTd}>{m.name} {m.concentration}</td>
+                    <td style={styles.rxTd}>{m.route}</td>
+                    <td style={styles.rxTd}>{m.dose}</td>
+                    <td style={styles.rxTd}>{m.frequency}</td>
+                    <td style={styles.rxTd}>{m.duration}</td>
+                    <td style={styles.rxTdCenter}>{m.morning ? "✓" : ""}</td>
+                    <td style={styles.rxTdCenter}>{m.noon ? "✓" : ""}</td>
+                    <td style={styles.rxTdCenter}>{m.evening ? "✓" : ""}</td>
+                    <td style={styles.rxTdCenter}>{m.night ? "✓" : ""}</td>
+                  </tr>
+                ))}
+                {Array.from({ length: Math.max(0, 6 - activeMeds.length) }).map((_, i) => (
+                  <tr key={"empty2" + i}>
+                    {Array.from({ length: 9 }).map((__, j) => <td key={j} style={styles.rxTd}>&nbsp;</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={styles.rxPrescriberBox}>
+              <div style={{ flex: 1 }}>
+                <span style={styles.printLabel}>ADVERTENCIAS:</span>
+                <div style={{ marginTop: 6, minHeight: 30 }}>{warnings || "—"}</div>
+              </div>
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <span style={styles.printLabel}>PRESCRIPTOR: {doctor?.name}</span>
+                <div style={styles.rxSignBox}>FIRMA Y SELLO</div>
+              </div>
+            </div>
+            <div style={styles.rxFooterNote}>Esta receta tiene validez para la entrega de medicamentos, un día.</div>
           </div>
         </div>
       </div>
@@ -1412,6 +1761,38 @@ function PrescriptionModal({ patient, doctors, patientName, onClose }) {
         <Button onClick={() => window.print()}><Download size={15} /> Guardar como PDF (A4)</Button>
       </div>
     </Modal>
+  );
+}
+
+function PrintLetterheadRx({ doctor, recipeNo, dateStr, label }) {
+  const [y, m, d] = (dateStr || "").split("-");
+  return (
+    <div style={styles.rxHeader}>
+      <div style={styles.printLogoRow}>
+        <svg width="34" height="34" viewBox="0 0 24 24">
+          <clipPath id="crossClipPrintRx"><rect x="9" y="2" width="6" height="20" rx="3" /><rect x="2" y="9" width="20" height="6" rx="3" /></clipPath>
+          <g clipPath="url(#crossClipPrintRx)">
+            <polygon points="0,0 24,0 0,24" fill="#E31C79" />
+            <polygon points="24,0 24,24 0,24" fill="#159E93" />
+          </g>
+        </svg>
+        <div>
+          <div style={styles.printClinicName}>HOME DOCTOR IBARRA</div>
+          <div style={styles.printClinicTag}>La salud en su hogar</div>
+        </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontWeight: 700 }}>{doctor?.name}</div>
+          <div style={{ fontSize: 11, color: "#666" }}>{doctor?.specialty}</div>
+        </div>
+      </div>
+      <div style={styles.rxTitleRow}>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>{label ? `${label} Nro` : "RECETA N°"} {recipeNo && `N°${recipeNo}`}</div>
+        <div style={{ display: "flex", gap: 14, fontSize: 12 }}>
+          <span>FECHA:DIA/ {d || "—"}</span><span>MES/ {m || "—"}</span><span>AÑO/ {y || "—"}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1549,9 +1930,9 @@ function DoctorForm({ doctor, onCancel, onSave }) {
 }
 
 // ---------- Utilitarios ----------
-function Field({ label, children, full }) {
+function Field({ label, children, full, style }) {
   return (
-    <div style={{ gridColumn: full ? "1 / -1" : "auto" }}>
+    <div style={{ gridColumn: full ? "1 / -1" : "auto", ...style }}>
       <label style={styles.fieldLabel}>{label}</label>
       {children}
     </div>
@@ -1666,6 +2047,16 @@ const styles = {
   homeDivider: { width: 54, height: 3, borderRadius: 2, background: `linear-gradient(90deg, ${TEAL}, ${MAGENTA})`, margin: "12px 0" },
   homeSubtitle: { fontSize: 16, fontWeight: 700, color: MAGENTA, letterSpacing: 0.5, fontStyle: "italic" },
   homeTagline: { fontSize: 13, color: "#8A8577", marginTop: 10 },
+  newAttentionBtn: {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+    margin: "0 auto 26px", padding: "16px 36px", borderRadius: 999, border: "none",
+    background: `linear-gradient(90deg, ${MAGENTA}, ${TEAL})`, color: "#fff",
+    fontSize: 17, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 18px rgba(227,28,121,0.25)",
+  },
+  attentionChoiceBtn: {
+    display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 12,
+    border: "1px solid #E4E0D3", background: "#fff", cursor: "pointer", textAlign: "left", width: "100%",
+  },
   homeStatsRow: { display: "flex", gap: 8, marginBottom: 30, flexWrap: "wrap", justifyContent: "center" },
   homeStatCard: { background: "#fff", border: "1px solid #E4E0D3", borderRadius: 6, padding: "5px 10px", textAlign: "center", minWidth: 62 },
   homeStatValue: { fontSize: 13, fontWeight: 800, color: TEAL_DARK },
@@ -1708,4 +2099,23 @@ const styles = {
   printSignature: { marginTop: 48, textAlign: "center" },
   printSignLine: { width: 220, borderTop: "1px solid #26312F", margin: "0 auto 6px" },
   printSignName: { fontSize: 13, fontWeight: 700, color: TEAL_DARK },
+
+  medCard: { border: "1px solid #E4E0D3", borderRadius: 10, padding: 12, marginBottom: 10, background: "#FAF8F2" },
+  medCardRow: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8, alignItems: "flex-end" },
+  medCardCheckRow: { display: "flex", gap: 16, flexWrap: "wrap", marginTop: 4 },
+  medCheckLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5C574C" },
+
+  rxSheet: { border: "1px solid #ccc", padding: 14, marginBottom: 14, fontSize: 12, color: "#111" },
+  rxHeader: { borderBottom: "2px solid #159E93", paddingBottom: 8, marginBottom: 10 },
+  rxTitleRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 },
+  rxPatientRow: { display: "flex", flexWrap: "wrap", gap: 12, fontSize: 11.5, padding: "8px 0", borderBottom: "1px solid #ccc", marginBottom: 8 },
+  rxPatientCell: { flex: 1, minWidth: 140 },
+  rxTable: { width: "100%", borderCollapse: "collapse", fontSize: 11, marginBottom: 10 },
+  rxTh: { border: "1px solid #999", padding: "6px 8px", background: "#F0EEE6", textAlign: "left", fontSize: 10.5 },
+  rxThSmall: { border: "1px solid #999", padding: "6px 4px", background: "#F0EEE6", textAlign: "center", fontSize: 9.5, width: 44 },
+  rxTd: { border: "1px solid #ccc", padding: "8px 8px", height: 18 },
+  rxTdCenter: { border: "1px solid #ccc", padding: "8px 4px", textAlign: "center" },
+  rxPrescriberBox: { display: "flex", gap: 16, borderTop: "1px solid #ccc", paddingTop: 10, fontSize: 11 },
+  rxSignBox: { border: "1px dashed #999", height: 50, marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, color: "#999" },
+  rxFooterNote: { fontSize: 9.5, color: "#777", marginTop: 10, textAlign: "center" },
 };
