@@ -82,7 +82,6 @@ const MEDICATION_CATALOG = [
 const TABS = [
   { key: "home", label: "Inicio", icon: Home },
   { key: "patients", label: "Pacientes", icon: Users },
-  { key: "history", label: "Historial clínico", icon: ClipboardList },
   { key: "appointments", label: "Citas", icon: CalendarDays },
   { key: "billing", label: "Facturación", icon: Receipt },
   { key: "doctors", label: "Médicos", icon: Stethoscope },
@@ -90,7 +89,6 @@ const TABS = [
 
 const HOME_CARDS = [
   { key: "patients", title: "Pacientes", desc: "Registro y fichas de admisión", icon: Users },
-  { key: "history", title: "Historial clínico", desc: "Consultas, diagnósticos y signos vitales", icon: ClipboardList },
   { key: "appointments", title: "Citas", desc: "Agenda de consultas programadas", icon: CalendarDays },
   { key: "billing", title: "Facturación", desc: "Cobros y estado de pagos", icon: Receipt },
   { key: "doctors", title: "Médicos", desc: "Equipo médico del consultorio", icon: Stethoscope },
@@ -355,9 +353,11 @@ function ClinicAppInner({ onLogout }) {
           #print-area { position: absolute; top: 0; left: 0; width: 100%; padding: 0; }
         }
       `}</style>
-      <Header notifStatus={notifStatus} onEnableNotifications={enableNotifications} />
+      <Header notifStatus={notifStatus} onEnableNotifications={enableNotifications} onLogout={onLogout} />
       <div style={styles.body}>
-        <Sidebar tab={tab} setTab={setTab} collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} onLogout={onLogout} />
+        {tab !== "home" && (
+          <Sidebar tab={tab} setTab={setTab} collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} onLogout={onLogout} />
+        )}
         <main style={styles.main}>
           {tab === "home" && (
             <HomeView
@@ -447,7 +447,7 @@ function ClinicAppInner({ onLogout }) {
 }
 
 // ---------- Layout ----------
-function Header({ notifStatus, onEnableNotifications }) {
+function Header({ notifStatus, onEnableNotifications, onLogout }) {
   const label = notifStatus === "granted" ? "Notificaciones activas"
     : notifStatus === "denied" ? "Notificaciones bloqueadas"
     : "Activar notificaciones de citas";
@@ -483,6 +483,9 @@ function Header({ notifStatus, onEnableNotifications }) {
         >
           {notifStatus === "granted" ? <Bell size={16} /> : <BellOff size={16} />}
           <span>{label}</span>
+        </button>
+        <button onClick={onLogout} title="Cerrar sesión" style={styles.headerLogoutBtn}>
+          <LogOut size={16} />
         </button>
       </div>
     </header>
@@ -1294,7 +1297,20 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
     diagnosis: entry.diagnosis || "", treatment: entry.treatment || "", notes: entry.notes || "",
     cie10: entry.cie10 || "",
   });
+  const [medPick, setMedPick] = useState("");
+  const [medDose, setMedDose] = useState("");
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  function addMedToTreatment() {
+    if (!medPick.trim()) return;
+    const found = MEDICATION_CATALOG.find((c) => c.name === medPick);
+    const line = found
+      ? `${found.name} ${found.concentration} (${found.form})${medDose ? ` — ${medDose}` : ""}`
+      : `${medPick}${medDose ? ` — ${medDose}` : ""}`;
+    setForm((prev) => ({ ...prev, treatment: prev.treatment ? `${prev.treatment}\n${line}` : line }));
+    setMedPick("");
+    setMedDose("");
+  }
 
   return (
     <Modal title={entry.id ? "Editar entrada" : "Nueva entrada de historial"} onClose={onCancel} wide>
@@ -1329,7 +1345,25 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
       <div style={styles.formGrid}>
         <Field label="CIE-10 (código de enfermedad)"><Input value={form.cie10} onChange={set("cie10")} placeholder="Ej. J02.9" /></Field>
         <Field label="Diagnóstico" full><TextArea value={form.diagnosis} onChange={set("diagnosis")} /></Field>
-        <Field label="Tratamiento" full><TextArea value={form.treatment} onChange={set("treatment")} /></Field>
+
+        <Field label="Elegir medicamento para el tratamiento" full>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input
+              list="med-catalog-history"
+              placeholder="Escribe o elige un medicamento…"
+              value={medPick}
+              onChange={(e) => setMedPick(e.target.value)}
+              style={{ ...styles.input, flex: 2, minWidth: 200 }}
+            />
+            <Input placeholder="Dosis / frecuencia (opcional)" value={medDose} onChange={(e) => setMedDose(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+            <Button variant="ghost" onClick={addMedToTreatment} type="button"><Plus size={15} /> Agregar al tratamiento</Button>
+          </div>
+          <datalist id="med-catalog-history">
+            {MEDICATION_CATALOG.map((c) => <option key={c.name + c.concentration} value={c.name} />)}
+          </datalist>
+        </Field>
+
+        <Field label="Tratamiento" full><TextArea value={form.treatment} onChange={set("treatment")} style={{ minHeight: 110 }} /></Field>
         <Field label="Notas adicionales" full><TextArea value={form.notes} onChange={set("notes")} /></Field>
       </div>
       <div style={styles.modalFooter}>
@@ -1960,6 +1994,7 @@ const styles = {
   brandSub: { color: MAGENTA, fontSize: 12, fontWeight: 600 },
   notifBtn: { display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", border: "1px solid #E4E0D3", color: "#5C574C", padding: "8px 14px", borderRadius: 20, fontSize: 12.5, fontWeight: 600, cursor: "pointer" },
   notifBtnActive: { background: TEAL_LIGHT, color: TEAL_DARK, border: `1px solid ${TEAL}` },
+  headerLogoutBtn: { marginLeft: 8, width: 34, height: 34, borderRadius: 8, border: "1px solid #E4E0D3", background: "#fff", color: "#9B3B2C", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
   body: { display: "flex", maxWidth: 1180, margin: "0 auto" },
   sidebar: { width: 220, padding: "24px 12px", display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, transition: "width 0.18s ease" },
   sidebarCollapsed: { width: 60, padding: "24px 8px", alignItems: "center" },
