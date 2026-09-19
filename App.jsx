@@ -395,9 +395,6 @@ function ClinicAppInner({ onLogout }) {
         />
       )}
       <div style={styles.body}>
-        {tab !== "home" && (
-          <Sidebar tab={tab} setTab={setTab} collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} onLogout={onLogout} />
-        )}
         <main style={styles.main}>
           {tab === "home" && (
             <HomeView
@@ -409,6 +406,7 @@ function ClinicAppInner({ onLogout }) {
                 doctors: doctors.length,
               }}
               onNewAttention={() => setAttentionFlow("choose")}
+              appointments={appointments} patientName={patientName} doctorName={doctorName}
             />
           )}
           {tab === "patients" && (
@@ -482,6 +480,7 @@ function ClinicAppInner({ onLogout }) {
           )}
         </main>
       </div>
+      <BottomNav tab={tab} setTab={setTab} onLogout={onLogout} />
     </div>
   );
 }
@@ -551,40 +550,29 @@ function Header({ notifStatus, onEnableNotifications, onLogout }) {
   );
 }
 
-function Sidebar({ tab, setTab, collapsed, setCollapsed, onLogout }) {
+function BottomNav({ tab, setTab, onLogout }) {
   return (
-    <nav style={{ ...styles.sidebar, ...(collapsed ? styles.sidebarCollapsed : {}) }}>
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        style={{ ...styles.navItem, ...styles.sidebarToggle, justifyContent: collapsed ? "center" : "flex-start" }}
-        title={collapsed ? "Expandir" : "Contraer"}
-      >
-        {collapsed ? <Menu size={17} /> : <ChevronLeft size={17} />}
-        {!collapsed && <span>Contraer</span>}
-      </button>
-      {TABS.map(({ key, label, icon: Icon }) => (
-        <button
-          key={key}
-          onClick={() => setTab(key)}
-          title={collapsed ? label : undefined}
-          style={{
-            ...styles.navItem,
-            ...(tab === key ? styles.navItemActive : {}),
-            ...(collapsed ? styles.navItemCollapsed : {}),
-          }}
-        >
-          <Icon size={17} strokeWidth={2} />
-          {!collapsed && <span>{label}</span>}
-        </button>
-      ))}
-      <div style={{ flex: 1 }} />
-      <button
-        onClick={onLogout}
-        title={collapsed ? "Cerrar sesión" : undefined}
-        style={{ ...styles.navItem, ...(collapsed ? styles.navItemCollapsed : {}), color: "#9B3B2C" }}
-      >
-        <LogOut size={17} strokeWidth={2} />
-        {!collapsed && <span>Cerrar sesión</span>}
+    <nav style={styles.bottomNav}>
+      {TABS.map(({ key, label, icon: Icon }) => {
+        const active = tab === key;
+        return (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            style={styles.bottomNavItem}
+          >
+            <div style={{ ...styles.bottomNavIconWrap, ...(active ? styles.bottomNavIconWrapActive : {}) }}>
+              <Icon size={19} strokeWidth={2.2} color={active ? "#fff" : "#8A8577"} />
+            </div>
+            <span style={{ ...styles.bottomNavLabel, ...(active ? styles.bottomNavLabelActive : {}) }}>{label}</span>
+          </button>
+        );
+      })}
+      <button onClick={onLogout} style={styles.bottomNavItem}>
+        <div style={styles.bottomNavIconWrap}>
+          <LogOut size={19} strokeWidth={2.2} color="#9B3B2C" />
+        </div>
+        <span style={{ ...styles.bottomNavLabel, color: "#9B3B2C" }}>Salir</span>
       </button>
     </nav>
   );
@@ -597,42 +585,55 @@ const HOME_STATS_MAP = {
   doctors: { label: "Médicos" },
 };
 
-function HomeView({ setTab, stats, onNewAttention }) {
+function HomeView({ setTab, stats, onNewAttention, appointments, patientName, doctorName }) {
+  const upcoming = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return [...(appointments || [])]
+      .filter((a) => a.status !== "completada" && a.date >= today)
+      .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+  }, [appointments]);
+
   return (
     <div style={styles.homeWrap}>
-      <div style={styles.homeLogoBlock}>
-        <div style={styles.homeLogoRing}>
-          <div style={styles.homeLogoMark}>
-            <svg width="72" height="72" viewBox="0 0 24 24">
-              <defs>
-                <linearGradient id="crossMagenta" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#F0459A" />
-                  <stop offset="100%" stopColor="#C21567" />
-                </linearGradient>
-                <linearGradient id="crossTeal" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#1CB5A8" />
-                  <stop offset="100%" stopColor="#0E7268" />
-                </linearGradient>
-                <clipPath id="crossClipHome">
-                  <rect x="9" y="1.5" width="6" height="21" rx="3" />
-                  <rect x="1.5" y="9" width="21" height="6" rx="3" />
-                </clipPath>
-              </defs>
-              <g clipPath="url(#crossClipHome)">
-                <polygon points="0,0 24,0 0,24" fill="url(#crossMagenta)" />
-                <polygon points="24,0 24,24 0,24" fill="url(#crossTeal)" />
-              </g>
-            </svg>
-          </div>
+      <div style={styles.homeGreetingRow}>
+        <div>
+          <div style={styles.homeGreetingHello}>Hola 👋</div>
+          <div style={styles.homeGreetingTitle}>Home Doctor Ibarra</div>
         </div>
-        <div style={styles.homeTitle}>Home Doctor Ibarra</div>
-        <div style={styles.homeDivider} />
-        <div style={styles.homeSubtitle}>La salud en su hogar</div>
-        <div style={styles.homeTagline}>Sistema de gestión de historiales clínicos</div>
+        <div style={styles.homeGreetingLogo}>
+          <svg width="34" height="34" viewBox="0 0 24 24">
+            <clipPath id="crossClipGreeting">
+              <rect x="9" y="2" width="6" height="20" rx="3" />
+              <rect x="2" y="9" width="20" height="6" rx="3" />
+            </clipPath>
+            <g clipPath="url(#crossClipGreeting)">
+              <polygon points="0,0 24,0 0,24" fill="#E31C79" />
+              <polygon points="24,0 24,24 0,24" fill="#159E93" />
+            </g>
+          </svg>
+        </div>
       </div>
 
-      <button style={styles.newAttentionBtn} onClick={onNewAttention}>
-        <Plus size={22} /> Nueva atención
+      {upcoming ? (
+        <div style={styles.nextApptCard}>
+          <div style={styles.nextApptLabel}>Tu próxima cita</div>
+          <div style={styles.nextApptPatient}>{patientName(upcoming.patientId)}</div>
+          <div style={styles.nextApptMeta}>{doctorName(upcoming.doctorId)}</div>
+          <div style={styles.nextApptDateRow}>
+            <CalendarDays size={15} />
+            <span>{upcoming.date} · {upcoming.time}</span>
+          </div>
+          <button style={styles.nextApptBtn} onClick={() => setTab("appointments")}>Ver agenda</button>
+        </div>
+      ) : (
+        <button style={styles.nextApptCardEmpty} onClick={() => setTab("appointments")}>
+          <CalendarDays size={20} color={TEAL} />
+          <span>No tienes citas próximas agendadas</span>
+        </button>
+      )}
+
+      <button style={styles.newAttentionBtnFull} onClick={onNewAttention}>
+        <Plus size={20} /> Nueva cita
       </button>
 
       <div style={styles.homeStatsRow}>
@@ -1532,6 +1533,7 @@ function AppointmentForm({ appt, patients, doctors, patientName, onCancel, onSav
 // ---------- Facturación ----------
 function BillingView({ billing, setBilling, patients, patientName }) {
   const [editing, setEditing] = useState(null);
+  const [facturandoId, setFacturandoId] = useState(null);
   const total = billing.reduce((s, b) => s + Number(b.amount || 0), 0);
   const pending = billing.filter((b) => b.status === "pendiente").reduce((s, b) => s + Number(b.amount || 0), 0);
 
@@ -1541,9 +1543,54 @@ function BillingView({ billing, setBilling, patients, patientName }) {
     setEditing(null);
   }
   function removeBill(id) { setBilling((prev) => prev.filter((b) => b.id !== id)); }
-  function toggleStatus(b) {
-    setBilling((prev) => prev.map((x) => x.id === b.id ? { ...x, status: x.status === "pagado" ? "pendiente" : "pagado" } : x));
+
+  async function generarFactura(b) {
+    const patient = patients.find((p) => p.id === b.patientId);
+    setFacturandoId(b.id);
+    setBilling((prev) => prev.map((x) => (x.id === b.id ? { ...x, facturaEstado: "enviando", facturaError: "" } : x)));
+    try {
+      const resp = await fetch("/api/facturar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          billingId: b.id,
+          patientName: patient ? `${patient.lastNamePaternal} ${patient.lastNameMaternal} ${patient.firstNames}`.replace(/\s+/g, " ").trim() : "Consumidor Final",
+          patientCedula: patient?.cedula || "",
+          patientDireccion: patient?.address || "",
+          concept: b.concept,
+          amount: b.amount,
+        }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        setBilling((prev) => prev.map((x) => (x.id === b.id
+          ? { ...x, facturaEstado: data.estado, facturaClaveAcceso: data.accessKey, facturaAmbiente: data.ambiente, facturaError: "" }
+          : x)));
+      } else {
+        setBilling((prev) => prev.map((x) => (x.id === b.id ? { ...x, facturaEstado: "error", facturaError: data.error } : x)));
+      }
+    } catch (err) {
+      setBilling((prev) => prev.map((x) => (x.id === b.id ? { ...x, facturaEstado: "error", facturaError: err.message } : x)));
+    } finally {
+      setFacturandoId(null);
+    }
   }
+
+  function toggleStatus(b) {
+    const marcandoPagado = b.status !== "pagado";
+    setBilling((prev) => prev.map((x) => x.id === b.id ? { ...x, status: x.status === "pagado" ? "pendiente" : "pagado" } : x));
+    if (marcandoPagado) generarFactura(b);
+  }
+
+  const facturaBadge = (b) => {
+    if (!b.facturaEstado) return null;
+    if (b.facturaEstado === "enviando") return <Badge tone="neutral">Enviando factura al SRI…</Badge>;
+    if (b.facturaEstado === "AUTORIZADO") return <Badge tone="success">Factura autorizada</Badge>;
+    if (b.facturaEstado === "RECHAZADO") return <Badge tone="warning">Factura rechazada — revisar</Badge>;
+    if (b.facturaEstado === "PPR") return <Badge tone="neutral">Factura en procesamiento en el SRI</Badge>;
+    if (b.facturaEstado === "error") return <Badge tone="warning">Error al facturar</Badge>;
+    return <Badge tone="neutral">{b.facturaEstado}</Badge>;
+  };
 
   return (
     <div>
@@ -1564,9 +1611,21 @@ function BillingView({ billing, setBilling, patients, patientName }) {
             <div style={{ flex: 1 }}>
               <div style={styles.cardTitle}>{patientName(b.patientId)}</div>
               <div style={styles.cardMeta}>{b.concept}</div>
+              {b.facturaEstado && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                  {facturaBadge(b)}
+                  {b.facturaClaveAcceso && <span style={{ fontSize: 11, color: "#8A8577" }}>Clave: {b.facturaClaveAcceso}</span>}
+                  {(b.facturaEstado === "error" || b.facturaEstado === "RECHAZADO") && (
+                    <Button variant="ghost" onClick={() => generarFactura(b)} style={{ padding: "4px 10px", fontSize: 12 }}>
+                      Reintentar
+                    </Button>
+                  )}
+                  {b.facturaError && <span style={{ fontSize: 11, color: "#9B3B2C" }}>{b.facturaError}</span>}
+                </div>
+              )}
             </div>
             <div style={styles.amount}><DollarSign size={14} />{Number(b.amount).toFixed(2)}</div>
-            <button onClick={() => toggleStatus(b)} style={{ border: "none", background: "none", cursor: "pointer" }}>
+            <button onClick={() => toggleStatus(b)} disabled={facturandoId === b.id} style={{ border: "none", background: "none", cursor: "pointer" }}>
               <Badge tone={b.status === "pagado" ? "success" : "warning"}>{b.status}</Badge>
             </button>
             <div style={styles.cardActions}>
@@ -2044,7 +2103,7 @@ const MAGENTA_LIGHT = "#FCE3F0";
 const TEAL_LIGHT = "#DFF3F1";
 
 const styles = {
-  app: { fontFamily: "'Segoe UI', -apple-system, sans-serif", background: "#FAFAF8", minHeight: "100vh", color: "#26312F" },
+  app: { fontFamily: "'Segoe UI', -apple-system, sans-serif", background: "#F7F5EF", minHeight: "100vh", color: "#26312F" },
   header: { background: "#fff", padding: "14px 24px", position: "sticky", top: 0, zIndex: 10, borderBottom: `3px solid ${TEAL}`, backgroundImage: `linear-gradient(120deg, ${MAGENTA_LIGHT} 0%, #fff 22%, #fff 78%, ${TEAL_LIGHT} 100%)` },
   headerInner: { maxWidth: 1180, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between" },
   brand: { display: "flex", alignItems: "center", gap: 12 },
@@ -2058,13 +2117,19 @@ const styles = {
   installBannerBtn: { background: "#fff", color: TEAL_DARK, border: "none", borderRadius: 8, padding: "6px 14px", fontWeight: 700, cursor: "pointer" },
   installBannerClose: { background: "transparent", border: "none", color: "#fff", cursor: "pointer", opacity: 0.8 },
   body: { display: "flex", maxWidth: 1180, margin: "0 auto" },
-  sidebar: { width: 220, padding: "24px 12px", display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, transition: "width 0.18s ease" },
-  sidebarCollapsed: { width: 60, padding: "24px 8px", alignItems: "center" },
-  sidebarToggle: { color: "#8A8577", marginBottom: 10, borderBottom: "1px solid #EFEBDF", borderRadius: 0, paddingBottom: 14 },
-  navItem: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, border: "none", background: "transparent", color: "#5C574C", fontSize: 14, cursor: "pointer", textAlign: "left" },
-  navItemCollapsed: { padding: "10px", justifyContent: "center", width: 40 },
-  navItemActive: { background: TEAL_LIGHT, color: TEAL_DARK, fontWeight: 700, boxShadow: `inset 3px 0 0 ${MAGENTA}` },
-  main: { flex: 1, padding: "24px 24px 60px", minWidth: 0 },
+  main: { flex: 1, padding: "20px 18px 100px", minWidth: 0 },
+  bottomNav: {
+    position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40,
+    display: "flex", justifyContent: "space-around", alignItems: "center",
+    background: "#fff", borderTop: "1px solid #EFEBDF",
+    padding: "8px 4px calc(8px + env(safe-area-inset-bottom))",
+    boxShadow: "0 -4px 16px rgba(0,0,0,0.04)",
+  },
+  bottomNavItem: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3, border: "none", background: "transparent", cursor: "pointer", padding: "2px 4px", flex: 1 },
+  bottomNavIconWrap: { width: 38, height: 38, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s ease" },
+  bottomNavIconWrapActive: { background: `linear-gradient(135deg, ${TEAL}, ${TEAL_DARK})`, boxShadow: "0 4px 10px rgba(21,158,147,0.35)" },
+  bottomNavLabel: { fontSize: 10.5, color: "#8A8577", fontWeight: 500 },
+  bottomNavLabelActive: { color: TEAL_DARK, fontWeight: 700 },
   sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20, flexWrap: "wrap", gap: 12 },
   sectionTitle: { fontSize: 22, fontWeight: 700, margin: 0, color: TEAL_DARK, textTransform: "uppercase", letterSpacing: 0.3 },
   sectionSubtitle: { fontSize: 13, color: "#8A8577", margin: "4px 0 0" },
@@ -2075,7 +2140,7 @@ const styles = {
   searchInput: { border: "none", outline: "none", fontSize: 14, flex: 1, background: "transparent" },
   filterRow: { marginBottom: 18 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 },
-  card: { background: "#fff", border: "1px solid #E4E0D3", borderTop: `3px solid ${TEAL}`, borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12 },
+  card: { background: "#fff", border: "1px solid #EFEBDF", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" },
   cardTopRow: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
   avatar: { width: 42, height: 42, borderRadius: "50%", background: TEAL_LIGHT, color: TEAL_DARK, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14, flexShrink: 0 },
   avatarAlt: { width: 42, height: 42, borderRadius: 10, background: MAGENTA_LIGHT, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
@@ -2111,7 +2176,7 @@ const styles = {
   vitalsBlock: { display: "flex", flexDirection: "column", gap: 6, marginTop: 4 },
   evolBlock: { display: "flex", flexDirection: "column", gap: 4 },
   rxBlock: { display: "flex", flexDirection: "column", gap: 4, background: MAGENTA_LIGHT, borderRadius: 8, padding: "10px 12px" },
-  summaryCard: { background: "#fff", border: "1px solid #E4E0D3", borderTop: `3px solid ${MAGENTA}`, borderRadius: 12, padding: 16, marginBottom: 18, display: "flex", flexDirection: "column", gap: 12 },
+  summaryCard: { background: "#fff", border: "1px solid #EFEBDF", borderRadius: 18, padding: 18, marginBottom: 18, display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" },
   summaryGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, borderTop: "1px solid #EFEBDF", paddingTop: 12 },
   antecedentesRow: { display: "flex", flexWrap: "wrap", gap: 8 },
   antecedenteChip: { fontSize: 12.5, color: "#5C574C", background: TEAL_LIGHT, borderRadius: 20, padding: "6px 12px" },
@@ -2119,8 +2184,8 @@ const styles = {
   reviewBanner: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#8A5A17", background: "#F7E7CE", borderRadius: 8, padding: "8px 12px" },
   lightHint: { fontSize: 12.5, color: "#8A8577", padding: "8px 4px 14px" },
   compactList: { display: "flex", flexDirection: "column", gap: 8 },
-  compactWrap: { background: "#fff", border: "1px solid #E4E0D3", borderRadius: 10, overflow: "hidden" },
-  compactRow: { display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 14px", border: "none", background: "transparent", cursor: "pointer" },
+  compactWrap: { background: "#fff", border: "1px solid #EFEBDF", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
+  compactRow: { display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "13px 16px", border: "none", background: "transparent", cursor: "pointer" },
   compactDetail: { padding: "0 14px 14px", borderTop: "1px solid #EFEBDF", display: "flex", flexDirection: "column", gap: 10 },
   historyGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12, borderTop: "1px solid #EFEBDF", paddingTop: 12 },
   vitalsRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#5C574C", marginTop: 12, background: TEAL_LIGHT, borderRadius: 8, padding: "8px 10px", flexWrap: "wrap" },
@@ -2128,7 +2193,7 @@ const styles = {
   label: { fontSize: 11.5, fontWeight: 700, color: MAGENTA, textTransform: "uppercase", letterSpacing: 0.4 },
   value: { fontSize: 13.5, color: "#2C2A24", margin: "4px 0 0" },
   list: { display: "flex", flexDirection: "column", gap: 8 },
-  listRow: { display: "flex", alignItems: "center", gap: 16, background: "#fff", border: "1px solid #E4E0D3", borderRadius: 10, padding: "12px 16px" },
+  listRow: { display: "flex", alignItems: "center", gap: 16, background: "#fff", border: "1px solid #EFEBDF", borderRadius: 16, padding: "13px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
   apptDate: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5C574C", minWidth: 150 },
   amount: { display: "flex", alignItems: "center", fontSize: 14, fontWeight: 700, color: TEAL_DARK },
   statsRow: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 18 },
@@ -2136,31 +2201,45 @@ const styles = {
   statLabel: { fontSize: 12.5, color: "#8A8577", marginBottom: 6 },
   statValue: { fontSize: 22, fontWeight: 700, color: TEAL_DARK },
 
-  homeWrap: { display: "flex", flexDirection: "column", alignItems: "center", padding: "20px 0 10px" },
-  homeLogoBlock: { display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 34 },
-  homeLogoRing: { width: 168, height: 168, borderRadius: "50%", background: `linear-gradient(135deg, ${TEAL}, ${MAGENTA})`, padding: 4, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20, boxShadow: "0 18px 40px rgba(21,158,147,0.22), 0 4px 14px rgba(227,28,121,0.12)" },
-  homeLogoMark: { width: "100%", height: "100%", borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.03)" },
-  homeTitle: { fontSize: 32, fontWeight: 800, color: TEAL_DARK, textTransform: "uppercase", letterSpacing: 2.5 },
-  homeDivider: { width: 54, height: 3, borderRadius: 2, background: `linear-gradient(90deg, ${TEAL}, ${MAGENTA})`, margin: "12px 0" },
-  homeSubtitle: { fontSize: 16, fontWeight: 700, color: MAGENTA, letterSpacing: 0.5, fontStyle: "italic" },
-  homeTagline: { fontSize: 13, color: "#8A8577", marginTop: 10 },
-  newAttentionBtn: {
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-    margin: "0 auto 26px", padding: "16px 36px", borderRadius: 999, border: "none",
-    background: `linear-gradient(90deg, ${MAGENTA}, ${TEAL})`, color: "#fff",
-    fontSize: 17, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 18px rgba(227,28,121,0.25)",
+  homeWrap: { display: "flex", flexDirection: "column", padding: "6px 0 10px", maxWidth: 640, margin: "0 auto", width: "100%" },
+  homeGreetingRow: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 },
+  homeGreetingHello: { fontSize: 13, color: "#8A8577", fontWeight: 500 },
+  homeGreetingTitle: { fontSize: 20, fontWeight: 800, color: TEAL_DARK, marginTop: 2 },
+  homeGreetingLogo: { width: 44, height: 44, borderRadius: 14, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 10px rgba(0,0,0,0.06)" },
+
+  nextApptCard: {
+    background: `linear-gradient(135deg, ${TEAL}, ${TEAL_DARK})`, borderRadius: 20, padding: "20px 22px",
+    color: "#fff", marginBottom: 22, boxShadow: "0 10px 24px rgba(21,158,147,0.28)",
   },
+  nextApptLabel: { fontSize: 12, opacity: 0.85, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 },
+  nextApptPatient: { fontSize: 19, fontWeight: 800, marginTop: 6 },
+  nextApptMeta: { fontSize: 13, opacity: 0.9, marginTop: 2 },
+  nextApptDateRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, marginTop: 12, opacity: 0.95 },
+  nextApptBtn: { marginTop: 16, background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.5)", color: "#fff", borderRadius: 10, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  nextApptCardEmpty: {
+    display: "flex", alignItems: "center", gap: 10, background: "#fff", border: "1px dashed #D8D3C4", borderRadius: 16,
+    padding: "16px 18px", marginBottom: 22, color: "#8A8577", fontSize: 13.5, cursor: "pointer", width: "100%", textAlign: "left",
+  },
+
+  newAttentionBtnFull: {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+    width: "100%", padding: "16px 20px", borderRadius: 16, border: "none",
+    background: `linear-gradient(90deg, ${MAGENTA}, ${TEAL})`, color: "#fff",
+    fontSize: 16, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 20px rgba(227,28,121,0.28)",
+    marginBottom: 24,
+  },
+
   attentionChoiceBtn: {
     display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 12,
     border: "1px solid #E4E0D3", background: "#fff", cursor: "pointer", textAlign: "left", width: "100%",
   },
-  homeStatsRow: { display: "flex", gap: 8, marginBottom: 30, flexWrap: "wrap", justifyContent: "center" },
-  homeStatCard: { background: "#fff", border: "1px solid #E4E0D3", borderRadius: 6, padding: "5px 10px", textAlign: "center", minWidth: 62 },
-  homeStatValue: { fontSize: 13, fontWeight: 800, color: TEAL_DARK },
-  homeStatLabel: { fontSize: 7.5, color: "#8A8577", marginTop: 1, textTransform: "uppercase", letterSpacing: 0.15 },
-  homeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18, width: "100%", maxWidth: 900 },
-  homeCard: { position: "relative", background: "#fff", border: "1px solid #E4E0D3", borderRadius: 16, padding: "28px 22px", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8, cursor: "pointer", textAlign: "left", boxShadow: "0 2px 10px rgba(0,0,0,0.03)", transition: "transform 0.15s, box-shadow 0.15s" },
-  homeCardIcon: { width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg, ${TEAL}, ${TEAL_DARK})`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 6 },
+  homeStatsRow: { display: "flex", gap: 8, marginBottom: 26, flexWrap: "wrap" },
+  homeStatCard: { flex: 1, background: "#fff", border: "1px solid #EFEBDF", borderRadius: 14, padding: "10px 8px", textAlign: "center", minWidth: 70, boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
+  homeStatValue: { fontSize: 16, fontWeight: 800, color: TEAL_DARK },
+  homeStatLabel: { fontSize: 9.5, color: "#8A8577", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.2 },
+  homeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, width: "100%" },
+  homeCard: { position: "relative", background: "#fff", border: "1px solid #EFEBDF", borderRadius: 18, padding: "22px 20px", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 7, cursor: "pointer", textAlign: "left", boxShadow: "0 3px 12px rgba(0,0,0,0.04)", transition: "transform 0.15s, box-shadow 0.15s" },
+  homeCardIcon: { width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${TEAL}, ${TEAL_DARK})`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 },
   homeCardTitle: { fontSize: 17, fontWeight: 700, color: TEAL_DARK },
   homeCardDesc: { fontSize: 13, color: "#8A8577", lineHeight: 1.4 },
   homeCardArrow: { position: "absolute", top: 22, right: 20, color: MAGENTA },
