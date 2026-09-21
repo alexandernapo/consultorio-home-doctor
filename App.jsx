@@ -35,6 +35,26 @@ const initialAppointments = []; // Los datos viven en Supabase (ver supabase/see
 
 const initialBilling = []; // Los datos viven en Supabase (ver supabase/seed.sql)
 
+const SERVICE_CATALOG = [
+  { name: "Consulta general", price: 25 },
+  { name: "Consulta especializada", price: 35 },
+  { name: "Consulta a domicilio", price: 30 },
+  { name: "Control / seguimiento", price: 15 },
+  { name: "Certificado médico", price: 10 },
+  { name: "Receta médica", price: 5 },
+  { name: "Toma de signos vitales", price: 5 },
+  { name: "Curación", price: 8 },
+  { name: "Inyección / vacuna", price: 5 },
+  { name: "Nebulización", price: 8 },
+  { name: "Sutura", price: 20 },
+  { name: "Retiro de puntos", price: 10 },
+  { name: "Consulta ginecológica", price: 35 },
+  { name: "Control prenatal", price: 30 },
+  { name: "Pap test", price: 20 },
+  { name: "Colocación / retiro de implante", price: 15 },
+  { name: "Electrocardiograma", price: 15 },
+];
+
 const MEDICATION_CATALOG = [
   { name: "Amoxicilina", concentration: "500mg", form: "Sólido oral" },
   { name: "Amoxicilina + Ácido Clavulánico", concentration: "875/125mg", form: "Sólido oral" },
@@ -460,6 +480,7 @@ function ClinicAppInner({ onLogout }) {
               patientName={patientName} doctorName={doctorName}
               appointments={appointments} setAppointments={setAppointments}
               autoOpenEntry={autoOpenEntry} onAutoOpened={() => setAutoOpenEntry(false)}
+              billing={billing} setBilling={setBilling}
             />
           )}
           {tab === "appointments" && (
@@ -467,6 +488,11 @@ function ClinicAppInner({ onLogout }) {
               appointments={appointments} setAppointments={setAppointments}
               patients={patients} doctors={doctors}
               patientName={patientName} doctorName={doctorName}
+              onNewAttentionFromAppt={(a) => {
+                setSelectedPatientId(a.patientId);
+                setTab("history");
+                setAutoOpenEntry(true);
+              }}
             />
           )}
           {tab === "billing" && (
@@ -1052,7 +1078,7 @@ function PatientForm({ patient, onCancel, onSave }) {
 }
 
 // ---------- Historial clínico ----------
-function HistoryView({ history, setHistory, patients, doctors, selectedPatientId, setSelectedPatientId, patientName, doctorName, appointments, setAppointments, autoOpenEntry, onAutoOpened }) {
+function HistoryView({ history, setHistory, patients, doctors, selectedPatientId, setSelectedPatientId, patientName, doctorName, appointments, setAppointments, autoOpenEntry, onAutoOpened, billing, setBilling }) {
   const [editing, setEditing] = useState(null);
   const [showPrescription, setShowPrescription] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
@@ -1070,9 +1096,17 @@ function HistoryView({ history, setHistory, patients, doctors, selectedPatientId
     }
   }, [autoOpenEntry, selectedPatientId]);
 
-  function saveEntry(data) {
+  function saveEntry(data, extra) {
+    const { services, servicesTotal } = extra || {};
     if (data.id) setHistory((prev) => prev.map((h) => (h.id === data.id ? data : h)));
     else setHistory((prev) => [...prev, { ...data, id: uid("h") }]);
+    if (servicesTotal > 0 && setBilling) {
+      const concept = (services || []).map((s) => s.name).join(", ");
+      setBilling((prev) => [
+        ...prev,
+        { id: uid("b"), patientId: data.patientId, concept, amount: servicesTotal, status: "pendiente" },
+      ]);
+    }
     setEditing(null);
   }
   function removeEntry(id) {
@@ -1359,7 +1393,34 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
   });
   const [medPick, setMedPick] = useState("");
   const [medDose, setMedDose] = useState("");
+  const [services, setServices] = useState(entry.services || []);
+  const [servicePick, setServicePick] = useState("");
+  const [error, setError] = useState("");
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const servicesTotal = services.reduce((s, x) => s + Number(x.price || 0), 0);
+
+  function addService() {
+    const found = SERVICE_CATALOG.find((c) => c.name === servicePick);
+    if (!servicePick.trim()) return;
+    setServices((prev) => [...prev, { id: uid("sv"), name: servicePick, price: found?.price ?? 0 }]);
+    setServicePick("");
+  }
+  function removeService(id) {
+    setServices((prev) => prev.filter((s) => s.id !== id));
+  }
+  function updateServicePrice(id, price) {
+    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, price: Number(price) || 0 } : s)));
+  }
+
+  function handleSave() {
+    if (!form.reason || !form.reason.trim()) {
+      setError("Escribe la enfermedad actual / motivo de consulta antes de guardar.");
+      return;
+    }
+    setError("");
+    onSave({ ...form, services, servicesTotal }, { services, servicesTotal });
+  }
 
   function addMedToTreatment() {
     if (!medPick.trim()) return;
@@ -1426,16 +1487,58 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
         <Field label="Tratamiento" full><TextArea value={form.treatment} onChange={set("treatment")} style={{ minHeight: 110 }} /></Field>
         <Field label="Notas adicionales" full><TextArea value={form.notes} onChange={set("notes")} /></Field>
       </div>
+
+      <SubHeading>Servicios prestados en esta atención</SubHeading>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <input
+          list="service-catalog-history"
+          placeholder="Escribe o elige un servicio…"
+          value={servicePick}
+          onChange={(e) => setServicePick(e.target.value)}
+          style={{ ...styles.input, flex: 2, minWidth: 200 }}
+        />
+        <Button variant="ghost" onClick={addService} type="button"><Plus size={15} /> Agregar servicio</Button>
+      </div>
+      <datalist id="service-catalog-history">
+        {SERVICE_CATALOG.map((c) => <option key={c.name} value={c.name}>{`$${c.price}`}</option>)}
+      </datalist>
+      {services.length > 0 && (
+        <div style={styles.servicesList}>
+          {services.map((s) => (
+            <div key={s.id} style={styles.serviceRow}>
+              <span style={{ flex: 1 }}>{s.name}</span>
+              <span style={{ fontSize: 13, color: "#8A8577" }}>$</span>
+              <input
+                type="number" step="0.01" value={s.price}
+                onChange={(e) => updateServicePrice(s.id, e.target.value)}
+                style={{ ...styles.input, width: 80, padding: "6px 8px" }}
+              />
+              <button style={styles.iconBtn} onClick={() => removeService(s.id)} type="button"><Trash2 size={14} /></button>
+            </div>
+          ))}
+          <div style={styles.servicesTotalRow}>Total de esta atención: <strong>${servicesTotal.toFixed(2)}</strong></div>
+        </div>
+      )}
+      <p style={{ fontSize: 12, color: "#8A8577", marginTop: 6 }}>
+        Al guardar, este total se agrega automáticamente como un cobro nuevo en Facturación.
+      </p>
+
+      {error && (
+        <div style={{ ...styles.reviewBanner, background: "#F7D9D0", color: "#9B3B2C", marginTop: 12 }}>
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
+
       <div style={styles.modalFooter}>
         <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button onClick={() => form.reason && onSave(form)}><Check size={15} /> Guardar</Button>
+        <Button onClick={handleSave}><Check size={15} /> Guardar</Button>
       </div>
     </Modal>
   );
 }
 
 // ---------- Citas ----------
-function AppointmentsView({ appointments, setAppointments, patients, doctors, patientName, doctorName }) {
+function AppointmentsView({ appointments, setAppointments, patients, doctors, patientName, doctorName, onNewAttentionFromAppt }) {
   const [editing, setEditing] = useState(null);
   const sorted = [...appointments].sort((a, b) => (a.date + a.time > b.date + b.time ? 1 : -1));
 
@@ -1473,6 +1576,11 @@ function AppointmentsView({ appointments, setAppointments, patients, doctors, pa
               <Badge tone={toneFor(a.status)}>{a.status}</Badge>
             </button>
             <div style={styles.cardActions}>
+              {onNewAttentionFromAppt && (
+                <Button variant="ghost" onClick={() => onNewAttentionFromAppt(a)}>
+                  <ClipboardList size={14} /> Nueva atención
+                </Button>
+              )}
               <button style={styles.iconBtn} onClick={() => setEditing(a)}><Edit3 size={15} /></button>
               <button style={styles.iconBtn} onClick={() => removeAppt(a.id)}><Trash2 size={15} /></button>
             </div>
@@ -2277,6 +2385,9 @@ const styles = {
   printSignName: { fontSize: 13, fontWeight: 700, color: TEAL_DARK },
 
   medCard: { border: "1px solid #E4E0D3", borderRadius: 10, padding: 12, marginBottom: 10, background: "#FAF8F2" },
+  servicesList: { border: "1px solid #E4E0D3", borderRadius: 10, padding: 10, background: "#FAF8F2", marginBottom: 4 },
+  serviceRow: { display: "flex", alignItems: "center", gap: 8, padding: "6px 2px", fontSize: 13.5 },
+  servicesTotalRow: { textAlign: "right", fontSize: 13.5, color: TEAL_DARK, marginTop: 6, paddingTop: 8, borderTop: "1px solid #E4E0D3" },
   medCardRow: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8, alignItems: "flex-end" },
   medCardCheckRow: { display: "flex", gap: 16, flexWrap: "wrap", marginTop: 4 },
   medCheckLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5C574C" },
