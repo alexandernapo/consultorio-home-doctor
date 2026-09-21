@@ -36,23 +36,24 @@ const initialAppointments = []; // Los datos viven en Supabase (ver supabase/see
 const initialBilling = []; // Los datos viven en Supabase (ver supabase/seed.sql)
 
 const SERVICE_CATALOG = [
-  { name: "Consulta general", price: 25 },
-  { name: "Consulta especializada", price: 35 },
-  { name: "Consulta a domicilio", price: 30 },
-  { name: "Control / seguimiento", price: 15 },
-  { name: "Certificado médico", price: 10 },
-  { name: "Receta médica", price: 5 },
-  { name: "Toma de signos vitales", price: 5 },
-  { name: "Curación", price: 8 },
-  { name: "Inyección / vacuna", price: 5 },
-  { name: "Nebulización", price: 8 },
-  { name: "Sutura", price: 20 },
-  { name: "Retiro de puntos", price: 10 },
-  { name: "Consulta ginecológica", price: 35 },
-  { name: "Control prenatal", price: 30 },
-  { name: "Pap test", price: 20 },
-  { name: "Colocación / retiro de implante", price: 15 },
-  { name: "Electrocardiograma", price: 15 },
+  { name: "Consulta general", price: 10 },
+  { name: "Colocación de medicación", price: 2 },
+  { name: "Toma de presión", price: 1 },
+  { name: "Curación", price: 5 },
+  { name: "Suturas", price: 25 },
+  { name: "Visitas domiciliarias", price: 20 },
+  { name: "Suero de vitaminas", price: 40 },
+  { name: "Suero de vitamina C", price: 25 },
+  { name: "Extracción de lunares", price: 20 },
+  { name: "Retiro de uñeros", price: 20 },
+  { name: "Certificado de escuela", price: 10 },
+  { name: "Certificado de trabajo (por día)", price: 20 },
+  { name: "Certificado legal", price: 40 },
+  { name: "Certificado policial (por día)", price: 22 },
+  { name: "Certificado universitario", price: 20 },
+  { name: "Certificado ocupacional", price: 40 },
+  { name: "Receta especial", price: 12 },
+  { name: "Receta normal", price: 10 },
 ];
 
 const MEDICATION_CATALOG = [
@@ -475,7 +476,7 @@ function ClinicAppInner({ onLogout }) {
           {tab === "history" && (
             <HistoryView
               history={history} setHistory={setHistory}
-              patients={patients} doctors={doctors}
+              patients={patients} setPatients={setPatients} doctors={doctors}
               selectedPatientId={selectedPatientId} setSelectedPatientId={setSelectedPatientId}
               patientName={patientName} doctorName={doctorName}
               appointments={appointments} setAppointments={setAppointments}
@@ -486,7 +487,7 @@ function ClinicAppInner({ onLogout }) {
           {tab === "appointments" && (
             <AppointmentsView
               appointments={appointments} setAppointments={setAppointments}
-              patients={patients} doctors={doctors}
+              patients={patients} setPatients={setPatients} doctors={doctors}
               patientName={patientName} doctorName={doctorName}
               onNewAttentionFromAppt={(a) => {
                 setSelectedPatientId(a.patientId);
@@ -935,7 +936,7 @@ function PatientsView({ patients, setPatients, onOpenHistory, fullName, history,
       {newApptFor && doctors && (
         <AppointmentForm
           appt={{ patientId: newApptFor }}
-          patients={patients} doctors={doctors} patientName={patientName}
+          patients={patients} doctors={doctors} patientName={patientName} setPatients={setPatients}
           onCancel={() => setNewApptFor(null)}
           onSave={(data) => {
             if (data.id) setAppointments((prev) => prev.map((a) => (a.id === data.id ? data : a)));
@@ -1011,7 +1012,17 @@ function PatientForm({ patient, onCancel, onSave }) {
     allergies: patient.allergies || "",
     apf: patient.apf || "",
   });
+  const [error, setError] = useState("");
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  function handleSave() {
+    if (!form.lastNamePaternal.trim() && !form.firstNames.trim()) {
+      setError("Escribe al menos el apellido paterno o los nombres antes de guardar.");
+      return;
+    }
+    setError("");
+    onSave(form);
+  }
 
   return (
     <Modal title={patient.id ? "Editar paciente" : "Nuevo paciente"} onClose={onCancel} wide>
@@ -1067,9 +1078,14 @@ function PatientForm({ patient, onCancel, onSave }) {
         <Field label="APF (antecedentes familiares)"><Input value={form.apf} onChange={set("apf")} placeholder="N/R" /></Field>
       </div>
 
+      {error && (
+        <div style={{ ...styles.reviewBanner, background: "#F7D9D0", color: "#9B3B2C", marginTop: 4 }}>
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
       <div style={styles.modalFooter}>
         <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button onClick={() => (form.lastNamePaternal || form.firstNames) && onSave(form)}>
+        <Button onClick={handleSave}>
           <Check size={15} /> Guardar
         </Button>
       </div>
@@ -1078,7 +1094,7 @@ function PatientForm({ patient, onCancel, onSave }) {
 }
 
 // ---------- Historial clínico ----------
-function HistoryView({ history, setHistory, patients, doctors, selectedPatientId, setSelectedPatientId, patientName, doctorName, appointments, setAppointments, autoOpenEntry, onAutoOpened, billing, setBilling }) {
+function HistoryView({ history, setHistory, patients, setPatients, doctors, selectedPatientId, setSelectedPatientId, patientName, doctorName, appointments, setAppointments, autoOpenEntry, onAutoOpened, billing, setBilling }) {
   const [editing, setEditing] = useState(null);
   const [showPrescription, setShowPrescription] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
@@ -1124,7 +1140,7 @@ function HistoryView({ history, setHistory, patients, doctors, selectedPatientId
         title="Historial clínico"
         subtitle={selectedPatientId ? `Paciente: ${patientName(selectedPatientId)} · ${entries.length} ${entries.length === 1 ? "atención" : "atenciones"}` : "Selecciona un paciente"}
         action={selectedPatientId
-          ? <Button onClick={() => setEditing({ patientId: selectedPatientId })}><Plus size={16} /> Nueva entrada</Button>
+          ? <Button onClick={() => setEditing({ patientId: selectedPatientId })}><Plus size={16} /> Nueva atención</Button>
           : null}
       />
 
@@ -1183,7 +1199,7 @@ function HistoryView({ history, setHistory, patients, doctors, selectedPatientId
       {showNewAppointment && selectedPatient && (
         <AppointmentForm
           appt={{ patientId: selectedPatient.id }}
-          patients={patients} doctors={doctors} patientName={patientName}
+          patients={patients} doctors={doctors} patientName={patientName} setPatients={setPatients}
           onCancel={() => setShowNewAppointment(false)}
           onSave={(data) => {
             if (data.id) setAppointments((prev) => prev.map((a) => (a.id === data.id ? data : a)));
@@ -1434,7 +1450,7 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
   }
 
   return (
-    <Modal title={entry.id ? "Editar entrada" : "Nueva entrada de historial"} onClose={onCancel} wide>
+    <Modal title={entry.id ? "Editar atención" : "Nueva atención"} onClose={onCancel} wide>
       <div style={styles.formGrid}>
         <Field label="Paciente">
           <Select value={form.patientId} onChange={set("patientId")}>
@@ -1538,7 +1554,7 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
 }
 
 // ---------- Citas ----------
-function AppointmentsView({ appointments, setAppointments, patients, doctors, patientName, doctorName, onNewAttentionFromAppt }) {
+function AppointmentsView({ appointments, setAppointments, patients, setPatients, doctors, patientName, doctorName, onNewAttentionFromAppt }) {
   const [editing, setEditing] = useState(null);
   const sorted = [...appointments].sort((a, b) => (a.date + a.time > b.date + b.time ? 1 : -1));
 
@@ -1559,7 +1575,7 @@ function AppointmentsView({ appointments, setAppointments, patients, doctors, pa
       <SectionHeader
         title="Citas"
         subtitle={`${appointments.length} programadas`}
-        action={<Button onClick={() => setEditing({ patientId: patients[0]?.id, doctorId: doctors[0]?.id })}><Plus size={16} /> Nueva cita</Button>}
+        action={<Button onClick={() => setEditing({ doctorId: doctors[0]?.id })}><Plus size={16} /> Nueva cita</Button>}
       />
       <div style={styles.list}>
         {sorted.map((a) => (
@@ -1590,28 +1606,81 @@ function AppointmentsView({ appointments, setAppointments, patients, doctors, pa
       </div>
 
       {editing !== null && (
-        <AppointmentForm appt={editing} patients={patients} doctors={doctors} patientName={patientName} onCancel={() => setEditing(null)} onSave={saveAppt} />
+        <AppointmentForm appt={editing} patients={patients} doctors={doctors} patientName={patientName} setPatients={setPatients} onCancel={() => setEditing(null)} onSave={saveAppt} />
       )}
     </div>
   );
 }
 
-function AppointmentForm({ appt, patients, doctors, patientName, onCancel, onSave }) {
+function AppointmentForm({ appt, patients, doctors, patientName, onCancel, onSave, setPatients }) {
   const [form, setForm] = useState({
-    id: appt.id, patientId: appt.patientId || patients[0]?.id, doctorId: appt.doctorId || doctors[0]?.id,
+    id: appt.id, patientId: appt.patientId || "", doctorId: appt.doctorId || doctors[0]?.id,
     date: appt.date || new Date().toISOString().slice(0, 10),
     time: appt.time || "09:00", status: appt.status || "pendiente",
     reason: appt.reason || "", cie10: appt.cie10 || "",
   });
+  const [patientQuery, setPatientQuery] = useState(appt.patientId ? patientName(appt.patientId) : "");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showQuickRegister, setShowQuickRegister] = useState(false);
+  const [error, setError] = useState("");
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const matches = patientQuery.trim()
+    ? patients.filter((p) => patientName(p.id).toLowerCase().includes(patientQuery.trim().toLowerCase())).slice(0, 8)
+    : [];
+
+  function pickPatient(p) {
+    setForm((prev) => ({ ...prev, patientId: p.id }));
+    setPatientQuery(patientName(p.id));
+    setShowDropdown(false);
+  }
+
+  function handleQuickRegister(data) {
+    const newId = uid("p");
+    const nextNum = String(patients.length + 1).padStart(4, "0");
+    const newPatient = { ...data, id: newId, historyNumber: data.historyNumber || `HC-${nextNum}`, createdAt: Date.now() };
+    setPatients((prev) => [...prev, newPatient]);
+    setForm((prev) => ({ ...prev, patientId: newId }));
+    setPatientQuery(`${data.lastNamePaternal} ${data.lastNameMaternal} ${data.firstNames}`.replace(/\s+/g, " ").trim());
+    setShowQuickRegister(false);
+  }
+
+  function handleSave() {
+    if (!form.patientId) {
+      setError("Busca y elige un paciente (o regístralo) antes de guardar.");
+      return;
+    }
+    setError("");
+    onSave(form);
+  }
 
   return (
     <Modal title={appt.id ? "Editar cita" : "Nueva cita"} onClose={onCancel}>
       <div style={styles.formGrid}>
-        <Field label="Paciente">
-          <Select value={form.patientId} onChange={set("patientId")}>
-            {patients.map((p) => <option key={p.id} value={p.id}>{patientName(p.id)}</option>)}
-          </Select>
+        <Field label="Paciente" full>
+          <div style={{ position: "relative" }}>
+            <input
+              value={patientQuery}
+              onChange={(e) => { setPatientQuery(e.target.value); setShowDropdown(true); setForm((prev) => ({ ...prev, patientId: "" })); }}
+              onFocus={() => setShowDropdown(true)}
+              placeholder="Escribe el nombre del paciente…"
+              style={styles.input}
+            />
+            {showDropdown && patientQuery.trim() && (
+              <div style={styles.patientDropdown}>
+                {matches.map((p) => (
+                  <button key={p.id} type="button" style={styles.patientDropdownRow} onClick={() => pickPatient(p)}>
+                    {patientName(p.id)} <span style={{ color: "#8A8577", fontSize: 12 }}>· {p.historyNumber}</span>
+                  </button>
+                ))}
+                {matches.length === 0 && (
+                  <button type="button" style={styles.patientDropdownRow} onClick={() => { setShowQuickRegister(true); setShowDropdown(false); }}>
+                    <Plus size={14} /> Registrar a "{patientQuery}" como paciente nuevo
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </Field>
         <Field label="Médico">
           <Select value={form.doctorId} onChange={set("doctorId")}>
@@ -1630,10 +1699,22 @@ function AppointmentForm({ appt, patients, doctors, patientName, onCancel, onSav
           </Select>
         </Field>
       </div>
+      {error && (
+        <div style={{ ...styles.reviewBanner, background: "#F7D9D0", color: "#9B3B2C" }}>
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
       <div style={styles.modalFooter}>
         <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button onClick={() => onSave(form)}><Check size={15} /> Guardar</Button>
+        <Button onClick={handleSave}><Check size={15} /> Guardar</Button>
       </div>
+      {showQuickRegister && (
+        <PatientForm
+          patient={{ firstNames: patientQuery }}
+          onCancel={() => setShowQuickRegister(false)}
+          onSave={handleQuickRegister}
+        />
+      )}
     </Modal>
   );
 }
@@ -1757,7 +1838,23 @@ function BillingForm({ bill, patients, patientName, onCancel, onSave }) {
     id: bill.id, patientId: bill.patientId, concept: bill.concept || "",
     amount: bill.amount || "", status: bill.status || "pendiente",
   });
+  const [error, setError] = useState("");
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  function setConcept(e) {
+    const value = e.target.value;
+    const found = SERVICE_CATALOG.find((c) => c.name === value);
+    setForm((prev) => ({ ...prev, concept: value, amount: found && !prev.amount ? found.price : prev.amount }));
+  }
+
+  function handleSave() {
+    if (!form.concept.trim()) {
+      setError("Escribe el concepto del cobro antes de guardar.");
+      return;
+    }
+    setError("");
+    onSave({ ...form, amount: Number(form.amount) || 0 });
+  }
 
   return (
     <Modal title={bill.id ? "Editar cobro" : "Nuevo cobro"} onClose={onCancel}>
@@ -1767,7 +1864,12 @@ function BillingForm({ bill, patients, patientName, onCancel, onSave }) {
             {patients.map((p) => <option key={p.id} value={p.id}>{patientName(p.id)}</option>)}
           </Select>
         </Field>
-        <Field label="Concepto"><Input value={form.concept} onChange={set("concept")} placeholder="Consulta general" /></Field>
+        <Field label="Concepto">
+          <input list="service-catalog-billing" style={styles.input} value={form.concept} onChange={setConcept} placeholder="Elige o escribe un servicio…" />
+          <datalist id="service-catalog-billing">
+            {SERVICE_CATALOG.map((c) => <option key={c.name} value={c.name}>{`$${c.price}`}</option>)}
+          </datalist>
+        </Field>
         <Field label="Monto (USD)"><Input type="number" value={form.amount} onChange={set("amount")} /></Field>
         <Field label="Estado">
           <Select value={form.status} onChange={set("status")}>
@@ -1776,9 +1878,14 @@ function BillingForm({ bill, patients, patientName, onCancel, onSave }) {
           </Select>
         </Field>
       </div>
+      {error && (
+        <div style={{ ...styles.reviewBanner, background: "#F7D9D0", color: "#9B3B2C" }}>
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
       <div style={styles.modalFooter}>
         <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button onClick={() => form.concept && onSave({ ...form, amount: Number(form.amount) || 0 })}>
+        <Button onClick={handleSave}>
           <Check size={15} /> Guardar
         </Button>
       </div>
@@ -2174,16 +2281,30 @@ function DoctorsView({ doctors, setDoctors }) {
 
 function DoctorForm({ doctor, onCancel, onSave }) {
   const [form, setForm] = useState({ id: doctor.id, name: doctor.name || "", specialty: doctor.specialty || "" });
+  const [error, setError] = useState("");
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  function handleSave() {
+    if (!form.name.trim()) {
+      setError("Escribe el nombre del médico antes de guardar.");
+      return;
+    }
+    setError("");
+    onSave(form);
+  }
   return (
     <Modal title={doctor.id ? "Editar médico" : "Nuevo médico"} onClose={onCancel}>
       <div style={styles.formGrid}>
         <Field label="Nombre"><Input value={form.name} onChange={set("name")} placeholder="Dr./Dra. Nombre Apellido" /></Field>
         <Field label="Especialidad"><Input value={form.specialty} onChange={set("specialty")} /></Field>
       </div>
+      {error && (
+        <div style={{ ...styles.reviewBanner, background: "#F7D9D0", color: "#9B3B2C" }}>
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
       <div style={styles.modalFooter}>
         <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button onClick={() => form.name && onSave(form)}><Check size={15} /> Guardar</Button>
+        <Button onClick={handleSave}><Check size={15} /> Guardar</Button>
       </div>
     </Modal>
   );
@@ -2290,6 +2411,8 @@ const styles = {
   antecedenteChip: { fontSize: 12.5, color: "#5C574C", background: TEAL_LIGHT, borderRadius: 20, padding: "6px 12px" },
   antecedenteLabel: { fontWeight: 700, color: TEAL_DARK, marginRight: 4 },
   reviewBanner: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#8A5A17", background: "#F7E7CE", borderRadius: 8, padding: "8px 12px" },
+  patientDropdown: { position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #E4E0D3", borderRadius: 10, boxShadow: "0 8px 20px rgba(0,0,0,0.1)", zIndex: 20, maxHeight: 220, overflowY: "auto" },
+  patientDropdownRow: { display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "10px 12px", border: "none", background: "transparent", textAlign: "left", cursor: "pointer", fontSize: 13.5, borderBottom: "1px solid #F3F0E8" },
   lightHint: { fontSize: 12.5, color: "#8A8577", padding: "8px 4px 14px" },
   compactList: { display: "flex", flexDirection: "column", gap: 8 },
   compactWrap: { background: "#fff", border: "1px solid #EFEBDF", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" },
