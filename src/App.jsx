@@ -436,7 +436,11 @@ function ClinicAppInner({ onLogout }) {
               onOpenHistory={(id) => { setSelectedPatientId(id); setTab("history"); }}
               onOpenImport={() => setShowImport(true)}
               doctors={doctors} patientName={patientName}
-              appointments={appointments} setAppointments={setAppointments}
+              onNewAttentionForPatient={(id) => {
+                setSelectedPatientId(id);
+                setTab("history");
+                setAutoOpenEntry(true);
+              }}
             />
           )}
           {showImport && <ImportModal onImport={importBatch} onClose={() => setShowImport(false)} />}
@@ -818,11 +822,10 @@ function SubHeading({ children }) {
 }
 
 // ---------- Pacientes ----------
-function PatientsView({ patients, setPatients, onOpenHistory, fullName, history, onOpenImport, doctors, patientName, appointments, setAppointments }) {
+function PatientsView({ patients, setPatients, onOpenHistory, fullName, history, onOpenImport, doctors, patientName, onNewAttentionForPatient }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
-  const [newApptFor, setNewApptFor] = useState(null);
 
   const hasQuery = query.trim().length > 0;
   const visitCountFor = (id) => history.filter((h) => h.patientId === id).length;
@@ -906,9 +909,9 @@ function PatientsView({ patients, setPatients, onOpenHistory, fullName, history,
                     <Button variant="ghost" onClick={() => onOpenHistory(p.id)}>
                       Historial <ChevronRight size={14} />
                     </Button>
-                    {doctors && setAppointments && (
-                      <Button variant="ghost" onClick={() => setNewApptFor(p.id)}>
-                        <CalendarDays size={14} /> Nueva cita
+                    {onNewAttentionForPatient && (
+                      <Button variant="ghost" onClick={() => onNewAttentionForPatient(p.id)}>
+                        <ClipboardList size={14} /> Nueva atención
                       </Button>
                     )}
                     {p.sourceUrl && (
@@ -932,18 +935,6 @@ function PatientsView({ patients, setPatients, onOpenHistory, fullName, history,
 
       {editing !== null && (
         <PatientForm patient={editing} onCancel={() => setEditing(null)} onSave={savePatient} />
-      )}
-      {newApptFor && doctors && (
-        <AppointmentForm
-          appt={{ patientId: newApptFor }}
-          patients={patients} doctors={doctors} patientName={patientName} setPatients={setPatients}
-          onCancel={() => setNewApptFor(null)}
-          onSave={(data) => {
-            if (data.id) setAppointments((prev) => prev.map((a) => (a.id === data.id ? data : a)));
-            else setAppointments((prev) => [...prev, { ...data, id: uid("a") }]);
-            setNewApptFor(null);
-          }}
-        />
       )}
     </div>
   );
