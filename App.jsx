@@ -436,7 +436,11 @@ function ClinicAppInner({ onLogout }) {
               onOpenHistory={(id) => { setSelectedPatientId(id); setTab("history"); }}
               onOpenImport={() => setShowImport(true)}
               doctors={doctors} patientName={patientName}
-              appointments={appointments} setAppointments={setAppointments}
+              onNewAttentionForPatient={(id) => {
+                setSelectedPatientId(id);
+                setTab("history");
+                setAutoOpenEntry(true);
+              }}
             />
           )}
           {showImport && <ImportModal onImport={importBatch} onClose={() => setShowImport(false)} />}
@@ -818,11 +822,10 @@ function SubHeading({ children }) {
 }
 
 // ---------- Pacientes ----------
-function PatientsView({ patients, setPatients, onOpenHistory, fullName, history, onOpenImport, doctors, patientName, appointments, setAppointments }) {
+function PatientsView({ patients, setPatients, onOpenHistory, fullName, history, onOpenImport, doctors, patientName, onNewAttentionForPatient }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
-  const [newApptFor, setNewApptFor] = useState(null);
 
   const hasQuery = query.trim().length > 0;
   const visitCountFor = (id) => history.filter((h) => h.patientId === id).length;
@@ -906,9 +909,9 @@ function PatientsView({ patients, setPatients, onOpenHistory, fullName, history,
                     <Button variant="ghost" onClick={() => onOpenHistory(p.id)}>
                       Historial <ChevronRight size={14} />
                     </Button>
-                    {doctors && setAppointments && (
-                      <Button variant="ghost" onClick={() => setNewApptFor(p.id)}>
-                        <CalendarDays size={14} /> Nueva cita
+                    {onNewAttentionForPatient && (
+                      <Button variant="ghost" onClick={() => onNewAttentionForPatient(p.id)}>
+                        <ClipboardList size={14} /> Nueva atención
                       </Button>
                     )}
                     {p.sourceUrl && (
@@ -932,18 +935,6 @@ function PatientsView({ patients, setPatients, onOpenHistory, fullName, history,
 
       {editing !== null && (
         <PatientForm patient={editing} onCancel={() => setEditing(null)} onSave={savePatient} />
-      )}
-      {newApptFor && doctors && (
-        <AppointmentForm
-          appt={{ patientId: newApptFor }}
-          patients={patients} doctors={doctors} patientName={patientName} setPatients={setPatients}
-          onCancel={() => setNewApptFor(null)}
-          onSave={(data) => {
-            if (data.id) setAppointments((prev) => prev.map((a) => (a.id === data.id ? data : a)));
-            else setAppointments((prev) => [...prev, { ...data, id: uid("a") }]);
-            setNewApptFor(null);
-          }}
-        />
       )}
     </div>
   );
@@ -1480,7 +1471,7 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
 
       <SubHeading>Evaluación</SubHeading>
       <div style={styles.formGrid}>
-        <Field label="CIE-10 (código de enfermedad)"><Input value={form.cie10} onChange={set("cie10")} placeholder="Ej. J02.9" /></Field>
+        <Cie10Field label="CIE-10 (código de enfermedad)" value={form.cie10} onChange={(val) => setForm((prev) => ({ ...prev, cie10: val }))} placeholder="Ej. J02.9" />
         <Field label="Diagnóstico" full><TextArea value={form.diagnosis} onChange={set("diagnosis")} /></Field>
 
         <Field label="Elegir medicamento para el tratamiento" full>
@@ -1690,7 +1681,7 @@ function AppointmentForm({ appt, patients, doctors, patientName, onCancel, onSav
         <Field label="Fecha"><Input type="date" value={form.date} onChange={set("date")} /></Field>
         <Field label="Hora"><Input type="time" value={form.time} onChange={set("time")} /></Field>
         <Field label="Motivo de consulta" full><Input placeholder="Ej. Control, dolor abdominal…" value={form.reason} onChange={set("reason")} /></Field>
-        <Field label="CIE-10 (si ya se conoce)"><Input placeholder="Ej. J02.9" value={form.cie10} onChange={set("cie10")} /></Field>
+        <Cie10Field label="CIE-10 (si ya se conoce)" placeholder="Ej. J02.9" value={form.cie10} onChange={(val) => setForm((prev) => ({ ...prev, cie10: val }))} />
         <Field label="Estado">
           <Select value={form.status} onChange={set("status")}>
             <option value="pendiente">Pendiente</option>
@@ -1966,7 +1957,7 @@ function PrescriptionModal({ patient, doctors, patientName, onClose, initialCie1
             </Field>
             <Field label="Fecha"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
             <Field label="N° de receta"><Input placeholder="Ej. 1048" value={recipeNo} onChange={(e) => setRecipeNo(e.target.value)} /></Field>
-            <Field label="CIE-10"><Input placeholder="Ej. G40" value={cie10} onChange={(e) => setCie10(e.target.value)} /></Field>
+            <Cie10Field label="CIE-10" placeholder="Ej. G40" value={cie10} onChange={setCie10} />
           </div>
 
           <SubHeading>Medicamentos</SubHeading>
@@ -2311,6 +2302,77 @@ function DoctorForm({ doctor, onCancel, onSave }) {
 }
 
 // ---------- Utilitarios ----------
+const cie10Cache = {};
+function loadCie10Letter(letter) {
+  if (cie10Cache[letter]) return cie10Cache[letter];
+  const promise = fetch(`/cie10/${letter}.json`)
+    .then((r) => (r.ok ? r.json() : {}))
+    .catch(() => ({}));
+  cie10Cache[letter] = promise;
+  return promise;
+}
+
+function Cie10Field({ label, value, onChange, placeholder, full }) {
+  const [query, setQuery] = useState(value || "");
+  const [matches, setMatches] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  React.useEffect(() => { setQuery(value || ""); }, [value]);
+
+  React.useEffect(() => {
+    const q = query.trim().toUpperCase();
+    if (!q || !/^[A-Z]/.test(q)) { setMatches([]); return; }
+    let cancelled = false;
+    setLoading(true);
+    loadCie10Letter(q[0]).then((data) => {
+      if (cancelled) return;
+      setLoading(false);
+      const found = Object.entries(data || {})
+        .filter(([code]) => code.startsWith(q))
+        .slice(0, 30);
+      setMatches(found);
+    });
+    return () => { cancelled = true; };
+  }, [query]);
+
+  function handlePick(code) {
+    onChange(code);
+    setQuery(code);
+    setOpen(false);
+  }
+
+  return (
+    <Field label={label || "CIE-10"} full={full}>
+      <div style={{ position: "relative" }}>
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder={placeholder || "Escribe la letra del código (ej. J02)…"}
+          style={styles.input}
+        />
+        {open && query.trim() && (
+          <div style={styles.patientDropdown}>
+            {loading && <div style={styles.patientDropdownRow}>Buscando…</div>}
+            {!loading && matches.map(([code, desc]) => (
+              <button key={code} type="button" style={styles.patientDropdownRow} onMouseDown={() => handlePick(code)}>
+                <strong>{code}</strong>&nbsp;— {desc}
+              </button>
+            ))}
+            {!loading && matches.length === 0 && (
+              <div style={{ ...styles.patientDropdownRow, color: "#8A8577", cursor: "default" }}>
+                Sin coincidencias en el catálogo — puedes escribir el código igual.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Field>
+  );
+}
+
 function Field({ label, children, full, style }) {
   return (
     <div style={{ gridColumn: full ? "1 / -1" : "auto", ...style }}>
