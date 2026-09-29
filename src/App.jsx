@@ -115,6 +115,40 @@ const HOME_CARDS = [
   { key: "doctors", title: "Médicos", desc: "Equipo médico del consultorio", icon: Stethoscope },
 ];
 
+// ---------- Alerta de errores de guardado (para no perder datos silenciosamente) ----------
+const saveErrorListeners = new Set();
+function emitSaveError(evt) {
+  saveErrorListeners.forEach((fn) => fn(evt));
+}
+function SaveErrorBanner() {
+  const [errors, setErrors] = useState([]);
+  React.useEffect(() => {
+    const handler = (evt) => setErrors((prev) => [...prev, { ...evt, id: uid("err") }]);
+    saveErrorListeners.add(handler);
+    return () => saveErrorListeners.delete(handler);
+  }, []);
+  function dismiss(id) { setErrors((prev) => prev.filter((e) => e.id !== id)); }
+  if (errors.length === 0) return null;
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 999, display: "flex", flexDirection: "column", gap: 2 }}>
+      {errors.map((e) => (
+        <div key={e.id} style={{
+          background: "#9B3B2C", color: "#fff", padding: "10px 16px", fontSize: 14,
+          display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between",
+        }}>
+          <span>
+            <AlertTriangle size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+            <strong>No se pudo guardar en "{e.table}".</strong> {e.count} registro(s) NO llegaron a la base de datos. Error: {e.error}. No cierres ni recargues la página — vuelve a intentar guardar, o avisa al soporte técnico.
+          </span>
+          <button onClick={() => dismiss(e.id)} style={{ background: "transparent", border: "1px solid #fff", color: "#fff", borderRadius: 6, padding: "4px 10px", cursor: "pointer", flexShrink: 0 }}>
+            Cerrar
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function useSupabaseArray(table, enabled) {
   const [data, setDataRaw] = useState(null);
   const [ready, setReady] = useState(false);
@@ -147,12 +181,18 @@ function useSupabaseArray(table, enabled) {
 
       if (removedIds.length) {
         supabase.from(table).delete().in("id", removedIds).then(({ error }) => {
-          if (error) console.error(`Error borrando en ${table}:`, error.message);
+          if (error) {
+            console.error(`Error borrando en ${table}:`, error.message);
+            emitSaveError({ table, action: "borrar", error: error.message, count: removedIds.length });
+          }
         });
       }
       if (changed.length) {
         supabase.from(table).upsert(changed).then(({ error }) => {
-          if (error) console.error(`Error guardando en ${table}:`, error.message);
+          if (error) {
+            console.error(`Error guardando en ${table}:`, error.message);
+            emitSaveError({ table, action: "guardar", error: error.message, count: changed.length });
+          }
         });
       }
       return next;
@@ -398,6 +438,7 @@ function ClinicAppInner({ onLogout }) {
 
   return (
     <div style={styles.app}>
+      <SaveErrorBanner />
       <style>{`
         @page { size: A4; margin: 15mm; }
         @media print {
@@ -1497,7 +1538,13 @@ function HistoryForm({ entry, patients, doctors, patientName, onCancel, onSave }
       <SubHeading>Evaluación</SubHeading>
       <div style={styles.formGrid}>
         <Field label="Enfermedad actual / motivo" full><Input value={form.reason} onChange={set("reason")} /></Field>
-        <Cie10Field label="CIE-10 (código de enfermedad)" value={form.cie10} onChange={(val) => setForm((prev) => ({ ...prev, cie10: val }))} placeholder="Ej. J02.9 o escribe el nombre de la enfermedad" />
+        <Cie10Field
+          label="CIE-10 (código de enfermedad)"
+          value={form.cie10}
+          onChange={(val) => setForm((prev) => ({ ...prev, cie10: val }))}
+          onPick={(code, desc) => setForm((prev) => ({ ...prev, diagnosis: desc || prev.diagnosis }))}
+          placeholder="Ej. J02.9 o escribe el nombre de la enfermedad"
+        />
         <Field label="Diagnóstico" full><TextArea value={form.diagnosis} onChange={set("diagnosis")} /></Field>
 
         <Field label="Elegir medicamento para el tratamiento" full>
@@ -2370,7 +2417,7 @@ function loadCie10All() {
   return cie10AllPromise;
 }
 
-function Cie10Field({ label, value, onChange, placeholder, full }) {
+function Cie10Field({ label, value, onChange, onPick, placeholder, full }) {
   const [query, setQuery] = useState(value || "");
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2409,8 +2456,9 @@ function Cie10Field({ label, value, onChange, placeholder, full }) {
     return () => { cancelled = true; };
   }, [query]);
 
-  function handlePick(code) {
+  function handlePick(code, desc) {
     onChange(code);
+    if (onPick) onPick(code, desc);
     setQuery(code);
     setOpen(false);
   }
@@ -2430,7 +2478,7 @@ function Cie10Field({ label, value, onChange, placeholder, full }) {
           <div style={styles.patientDropdown}>
             {loading && <div style={styles.patientDropdownRow}>Buscando…</div>}
             {!loading && matches.map(([code, desc]) => (
-              <button key={code} type="button" style={styles.patientDropdownRow} onMouseDown={() => handlePick(code)}>
+              <button key={code} type="button" style={styles.patientDropdownRow} onMouseDown={() => handlePick(code, desc)}>
                 <strong>{code}</strong>&nbsp;— {desc}
               </button>
             ))}
