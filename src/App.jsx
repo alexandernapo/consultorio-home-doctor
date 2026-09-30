@@ -1845,7 +1845,9 @@ function BillingView({ billing, setBilling, patients, patientName }) {
   function toggleStatus(b) {
     const marcandoPagado = b.status !== "pagado";
     setBilling((prev) => prev.map((x) => x.id === b.id ? { ...x, status: x.status === "pagado" ? "pendiente" : "pagado" } : x));
-    if (marcandoPagado) generarFactura(b);
+    // Facturación electrónica al SRI: desactivada temporalmente (integración sin terminar,
+    // /api/facturar aún no existe en el despliegue). Descomentar la línea de abajo cuando esté lista.
+    // if (marcandoPagado) generarFactura(b);
   }
 
   const facturaBadge = (b) => {
