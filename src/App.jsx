@@ -1152,7 +1152,7 @@ function HistoryView({ history, setHistory, patients, setPatients, doctors, sele
       const concept = (services || []).map((s) => s.name).join(", ");
       setBilling((prev) => [
         ...prev,
-        { id: uid("b"), patientId: data.patientId, concept, amount: servicesTotal, status: "pendiente" },
+        { id: uid("b"), patientId: data.patientId, concept, amount: servicesTotal, status: "pendiente", createdAt: Date.now() },
       ]);
     }
     setEditing(null);
@@ -1805,7 +1805,7 @@ function BillingView({ billing, setBilling, patients, patientName }) {
 
   function saveBill(data) {
     if (data.id) setBilling((prev) => prev.map((b) => (b.id === data.id ? data : b)));
-    else setBilling((prev) => [...prev, { ...data, id: uid("b") }]);
+    else setBilling((prev) => [...prev, { ...data, id: uid("b"), createdAt: Date.now() }]);
     setEditing(null);
   }
   function removeBill(id) { setBilling((prev) => prev.filter((b) => b.id !== id)); }
@@ -1867,6 +1867,9 @@ function BillingView({ billing, setBilling, patients, patientName }) {
         subtitle="Cobros por consulta"
         action={<Button onClick={() => setEditing({ patientId: patients[0]?.id })}><Plus size={16} /> Nuevo cobro</Button>}
       />
+
+      <CajaDashboard billing={billing} />
+
       <div style={styles.statsRow}>
         <div style={styles.statCard}><div style={styles.statLabel}>Total facturado</div><div style={styles.statValue}>${total.toFixed(2)}</div></div>
         <div style={styles.statCard}><div style={styles.statLabel}>Pendiente de pago</div><div style={{ ...styles.statValue, color: "#9B3B2C" }}>${pending.toFixed(2)}</div></div>
@@ -1907,6 +1910,98 @@ function BillingView({ billing, setBilling, patients, patientName }) {
 
       {editing !== null && (
         <BillingForm bill={editing} patients={patients} patientName={patientName} onCancel={() => setEditing(null)} onSave={saveBill} />
+      )}
+    </div>
+  );
+}
+
+function CajaDashboard({ billing }) {
+  const stats = useMemo(() => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayOfWeek = (now.getDay() + 6) % 7; // lunes = 0
+    const startOfWeek = startOfDay - dayOfWeek * 86400000;
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    const paid = billing.filter((b) => b.status === "pagado" && b.createdAt);
+    const sumSince = (ts) => paid.filter((b) => b.createdAt >= ts).reduce((s, b) => s + Number(b.amount || 0), 0);
+    const countSince = (ts) => paid.filter((b) => b.createdAt >= ts).length;
+
+    // Últimos 7 días (incluye hoy), para el mini-gráfico
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const dayStart = startOfDay - i * 86400000;
+      const dayEnd = dayStart + 86400000;
+      const total = paid.filter((b) => b.createdAt >= dayStart && b.createdAt < dayEnd).reduce((s, b) => s + Number(b.amount || 0), 0);
+      days.push({ label: new Date(dayStart).toLocaleDateString("es-EC", { weekday: "short" }), total });
+    }
+    const maxDay = Math.max(1, ...days.map((d) => d.total));
+    const withoutDate = billing.filter((b) => b.status === "pagado" && !b.createdAt).length;
+
+    return {
+      today: { total: sumSince(startOfDay), count: countSince(startOfDay) },
+      week: { total: sumSince(startOfWeek), count: countSince(startOfWeek) },
+      month: { total: sumSince(startOfMonth), count: countSince(startOfMonth) },
+      days, maxDay, withoutDate,
+    };
+  }, [billing]);
+
+  const cards = [
+    { label: "Hoy", icon: <Clock size={18} />, color: TEAL, ...stats.today },
+    { label: "Esta semana", icon: <CalendarDays size={18} />, color: MAGENTA, ...stats.week },
+    { label: "Este mes", icon: <DollarSign size={18} />, color: TEAL_DARK, ...stats.month },
+  ];
+
+  return (
+    <div style={{
+      background: "linear-gradient(135deg, rgba(21,158,147,0.10), rgba(227,28,121,0.07))",
+      backdropFilter: GLASS_BLUR, WebkitBackdropFilter: GLASS_BLUR,
+      border: GLASS_BORDER, borderRadius: 22, padding: 22, marginBottom: 22, boxShadow: GLASS_SHADOW,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+        <Activity size={18} color={TEAL_DARK} />
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: TEAL_DARK, letterSpacing: 0.3 }}>Caja — ingresos cobrados</h3>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 20 }}>
+        {cards.map((c) => (
+          <div key={c.label} style={{
+            background: "rgba(255,255,255,0.75)", borderRadius: 16, padding: "16px 18px",
+            boxShadow: "0 4px 16px rgba(20,110,120,0.08)", border: "1px solid rgba(255,255,255,0.8)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: c.color, marginBottom: 8 }}>
+              {c.icon}
+              <span style={{ fontSize: 12.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>{c.label}</span>
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#26312F" }}>${c.total.toFixed(2)}</div>
+            <div style={{ fontSize: 12, color: "#8A8577", marginTop: 2 }}>{c.count} cobro{c.count === 1 ? "" : "s"}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#8A8577", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.4 }}>
+        Últimos 7 días
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 90 }}>
+        {stats.days.map((d, i) => (
+          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <div
+              title={`$${d.total.toFixed(2)}`}
+              style={{
+                width: "100%", maxWidth: 28, borderRadius: 6,
+                height: Math.max(4, (d.total / stats.maxDay) * 64),
+                background: `linear-gradient(180deg, ${TEAL}, ${TEAL_DARK})`,
+                boxShadow: "0 2px 6px rgba(21,158,147,0.3)",
+              }}
+            />
+            <span style={{ fontSize: 10.5, color: "#8A8577", textTransform: "capitalize" }}>{d.label}</span>
+          </div>
+        ))}
+      </div>
+      {stats.withoutDate > 0 && (
+        <p style={{ fontSize: 11.5, color: "#8A8577", marginTop: 14, marginBottom: 0 }}>
+          {stats.withoutDate} cobro{stats.withoutDate === 1 ? "" : "s"} pagado{stats.withoutDate === 1 ? "" : "s"} sin fecha registrada no se incluye{stats.withoutDate === 1 ? "" : "n"} arriba (se crearon antes de esta función).
+        </p>
       )}
     </div>
   );
