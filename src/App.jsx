@@ -2011,6 +2011,7 @@ function BillingForm({ bill, patients, patientName, onCancel, onSave }) {
   const [form, setForm] = useState({
     id: bill.id, patientId: bill.patientId, concept: bill.concept || "",
     amount: bill.amount || "", status: bill.status || "pendiente",
+    date: bill.createdAt ? new Date(bill.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
   });
   const [error, setError] = useState("");
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -2027,7 +2028,10 @@ function BillingForm({ bill, patients, patientName, onCancel, onSave }) {
       return;
     }
     setError("");
-    onSave({ ...form, amount: Number(form.amount) || 0 });
+    const { date, ...rest } = form;
+    // La fecha se guarda a mediodía local para evitar que un cambio de zona horaria la corra al día anterior.
+    const createdAt = date ? new Date(date + "T12:00:00").getTime() : (bill.createdAt || Date.now());
+    onSave({ ...rest, amount: Number(form.amount) || 0, createdAt });
   }
 
   return (
@@ -2045,6 +2049,7 @@ function BillingForm({ bill, patients, patientName, onCancel, onSave }) {
           </datalist>
         </Field>
         <Field label="Monto (USD)"><Input type="number" value={form.amount} onChange={set("amount")} /></Field>
+        <Field label="Fecha del cobro"><Input type="date" value={form.date} onChange={set("date")} /></Field>
         <Field label="Estado">
           <Select value={form.status} onChange={set("status")}>
             <option value="pendiente">Pendiente</option>
