@@ -1916,6 +1916,7 @@ function BillingView({ billing, setBilling, patients, patientName }) {
 }
 
 function CajaDashboard({ billing }) {
+  const [showPastMonths, setShowPastMonths] = useState(false);
   const stats = useMemo(() => {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -1938,11 +1939,25 @@ function CajaDashboard({ billing }) {
     const maxDay = Math.max(1, ...days.map((d) => d.total));
     const withoutDate = billing.filter((b) => b.status === "pagado" && !b.createdAt).length;
 
+    // Meses anteriores (2 meses antes del actual), para la sección plegable
+    const pastMonths = [];
+    for (let i = 1; i <= 2; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const start = d.getTime();
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1).getTime();
+      const inRange = paid.filter((b) => b.createdAt >= start && b.createdAt < end);
+      pastMonths.push({
+        label: d.toLocaleDateString("es-EC", { month: "long", year: "numeric" }),
+        total: inRange.reduce((s, b) => s + Number(b.amount || 0), 0),
+        count: inRange.length,
+      });
+    }
+
     return {
       today: { total: sumSince(startOfDay), count: countSince(startOfDay) },
       week: { total: sumSince(startOfWeek), count: countSince(startOfWeek) },
       month: { total: sumSince(startOfMonth), count: countSince(startOfMonth) },
-      days, maxDay, withoutDate,
+      days, maxDay, withoutDate, pastMonths,
     };
   }, [billing]);
 
@@ -2002,6 +2017,31 @@ function CajaDashboard({ billing }) {
         <p style={{ fontSize: 11.5, color: "#8A8577", marginTop: 14, marginBottom: 0 }}>
           {stats.withoutDate} cobro{stats.withoutDate === 1 ? "" : "s"} pagado{stats.withoutDate === 1 ? "" : "s"} sin fecha registrada no se incluye{stats.withoutDate === 1 ? "" : "n"} arriba (se crearon antes de esta función).
         </p>
+      )}
+
+      <button
+        onClick={() => setShowPastMonths((v) => !v)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6, marginTop: 18, background: "transparent",
+          border: "none", color: TEAL_DARK, fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0,
+        }}
+      >
+        <ChevronRight size={15} style={{ transform: showPastMonths ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+        Meses anteriores
+      </button>
+      {showPastMonths && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginTop: 12 }}>
+          {stats.pastMonths.map((m) => (
+            <div key={m.label} style={{
+              background: "rgba(255,255,255,0.6)", borderRadius: 14, padding: "14px 16px",
+              border: "1px solid rgba(255,255,255,0.7)",
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#8A8577", textTransform: "capitalize", marginBottom: 6 }}>{m.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#26312F" }}>${m.total.toFixed(2)}</div>
+              <div style={{ fontSize: 11.5, color: "#8A8577", marginTop: 2 }}>{m.count} cobro{m.count === 1 ? "" : "s"}</div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
